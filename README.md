@@ -1,8 +1,6 @@
-# MaaS Agent Testing Harness
+# Agent Testing Harness
 
 A reusable harness for running LangGraph agents against any OpenAI-compatible LLM endpoint, observing live token consumption and rate-limiting behaviour, and comparing how different agent architectures respond to throttling — all through a live browser dashboard.
-
-The harness is not a demo asset. It is a general-purpose tool for testing models and agents. The banking scenario agents (Dispute Triage, Policy Research, Customer Assistant) are included as working examples that can be replaced or extended with your own agents.
 
 ---
 
@@ -10,9 +8,9 @@ The harness is not a demo asset. It is a general-purpose tool for testing models
 
 - **Runs any number of agents simultaneously**, each in its own process, each with its own identity, team, and behaviour mode
 - **Shows live token consumption** per agent on rolling 60-second charts
-- **Compares agent behaviours** — run a `paced` agent and a `runaway` agent on the same subscription and watch what happens
-- **Enforces client-side rate limits** via a smooth token bucket (paced mode) so agents stay within their budget without relying on server-side throttling
-- **Controls agents from the browser** — start, stop, change mode, adjust TPM limit — without restarting any processes
+-  **Simulate agent behaviours** — run a `paced` agent and a `runaway` agent and test your system resilience
+- **Enforces client-side rate limits** so agents stay within their budget without relying on server-side throttling
+- **Controls agents from the browser**
 - **Emits structured telemetry** after every model call — to stdout and to the dashboard
 
 ---
@@ -51,23 +49,25 @@ uv run dashboard        # → http://localhost:8000
 MAAS_API_KEY=your-key DISPLAY_NAME="My Agent" TEAM_ID="My Team" uv run agent
 ```
 
-Open http://localhost:8000 and click **Start** on the agent card.
+Open [http://localhost:8000](http://localhost:8000) and click **Start** on the agent card.
 
-For full setup details, see **[Getting Started](docs/getting-started.md)**.
+For full setup details, see [**Getting Started**](docs/getting-started.md).
 
 ---
 
 ## Documentation
 
-| Document | What it covers |
-|---|---|
-| [Getting Started](docs/getting-started.md) | Install, configure, start the dashboard, connect your first agent |
-| [Configuration Reference](docs/configuration.md) | Every environment variable, what it does, and when to set it |
-| [Agent Modes](docs/agent-modes.md) | `naive`, `paced`, `runaway` — behaviour, retry logic, pacing |
-| [Dashboard Guide](docs/dashboard.md) | Every control, metric, and indicator explained |
-| [Writing an Agent](docs/writing-an-agent.md) | How to write a new agent and plug it into the harness |
-| [How the Harness Works](docs/harness-internals.md) | ModelHarness, TokenBucket, TelemetryEmitter — internals |
-| [API Reference](docs/api-reference.md) | All REST endpoints used by agents and the dashboard |
+
+| Document                                           | What it covers                                                    |
+| -------------------------------------------------- | ----------------------------------------------------------------- |
+| [Getting Started](docs/getting-started.md)         | Install, configure, start the dashboard, connect your first agent |
+| [Configuration Reference](docs/configuration.md)   | Every environment variable, what it does, and when to set it      |
+| [Agent Modes](docs/agent-modes.md)                 | `naive`, `paced`, `runaway` — behaviour, retry logic, pacing      |
+| [Dashboard Guide](docs/dashboard.md)               | Every control, metric, and indicator explained                    |
+| [Writing an Agent](docs/writing-an-agent.md)       | How to write a new agent and plug it into the harness             |
+| [How the Harness Works](docs/harness-internals.md) | ModelHarness, TokenBucket, TelemetryEmitter — internals           |
+| [API Reference](docs/api-reference.md)             | All REST endpoints used by agents and the dashboard               |
+
 
 ---
 
@@ -139,11 +139,13 @@ maas-agent-demo/
 
 ### Entry points
 
-| Command | Description |
-|---|---|
-| `uv run dashboard` | Start the FastAPI dashboard on port 8000 |
-| `uv run agent` | Start an agent worker (reads config from environment) |
-| `uv run probe` | Run a 90-second rate-limit probe to characterise your endpoint |
+
+| Command            | Description                                                    |
+| ------------------ | -------------------------------------------------------------- |
+| `uv run dashboard` | Start the FastAPI dashboard on port 8000                       |
+| `uv run agent`     | Start an agent worker (reads config from environment)          |
+| `uv run probe`     | Run a 90-second rate-limit probe to characterise your endpoint |
+
 
 ---
 
@@ -151,11 +153,13 @@ maas-agent-demo/
 
 Three agents are included as examples. Each demonstrates a different LLM usage pattern:
 
-| Agent | `AGENT_TYPE` | Pattern | Token profile |
-|---|---|---|---|
-| Dispute Triage | `triage` | Sequential 3-step graph: classify → extract → summarise | Input-heavy (~700–800 prompt tokens per call), short outputs |
-| Policy Research | `research` | Plan → sequential workers → synthesise | Burst pattern: 6–8 sequential calls per cycle |
-| Customer Assistant | `assistant` | Multi-turn streaming chat with history | Growing token cost per turn as history accumulates |
+
+| Agent              | `AGENT_TYPE` | Pattern                                                 | Token profile                                                 |
+| ------------------ | ------------ | ------------------------------------------------------- | ------------------------------------------------------------- |
+| Dispute Triage     | `triage`     | Sequential 3-step graph: classify → extract → summarise | Input-heavy (\~700–800 prompt tokens per call), short outputs |
+| Policy Research    | `research`   | Plan → sequential workers → synthesise                  | Burst pattern: 6–8 sequential calls per cycle                 |
+| Customer Assistant | `assistant`  | Multi-turn streaming chat with history                  | Growing token cost per turn as history accumulates            |
+
 
 All three use the same `ModelHarness` and are fully interchangeable with your own agent implementations.
 
