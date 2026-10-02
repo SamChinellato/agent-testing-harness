@@ -1,0 +1,1602 @@
+[
+  {
+    "id": "LET-0001",
+    "filename": "letter_0001.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$120.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0002",
+    "filename": "letter_0002.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$349.50",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0003",
+    "filename": "letter_0003.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$890.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0004",
+    "filename": "letter_0004.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$1,450.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0005",
+    "filename": "letter_0005.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$2,100.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0006",
+    "filename": "letter_0006.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$75.25",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0007",
+    "filename": "letter_0007.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$620.15",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0008",
+    "filename": "letter_0008.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$15.99",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0009",
+    "filename": "letter_0009.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$2,890.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0010",
+    "filename": "letter_0010.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$49.99",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0011",
+    "filename": "letter_0011.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$120.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0012",
+    "filename": "letter_0012.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$349.50",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0013",
+    "filename": "letter_0013.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$890.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0014",
+    "filename": "letter_0014.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$1,450.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0015",
+    "filename": "letter_0015.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$2,100.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0016",
+    "filename": "letter_0016.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$75.25",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0017",
+    "filename": "letter_0017.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$620.15",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0018",
+    "filename": "letter_0018.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$15.99",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0019",
+    "filename": "letter_0019.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$2,890.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0020",
+    "filename": "letter_0020.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$49.99",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0021",
+    "filename": "letter_0021.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$120.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0022",
+    "filename": "letter_0022.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$349.50",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0023",
+    "filename": "letter_0023.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$890.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0024",
+    "filename": "letter_0024.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$1,450.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0025",
+    "filename": "letter_0025.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$2,100.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0026",
+    "filename": "letter_0026.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$75.25",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0027",
+    "filename": "letter_0027.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$620.15",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0028",
+    "filename": "letter_0028.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$15.99",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0029",
+    "filename": "letter_0029.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$2,890.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0030",
+    "filename": "letter_0030.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$49.99",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0031",
+    "filename": "letter_0031.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$120.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0032",
+    "filename": "letter_0032.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$349.50",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0033",
+    "filename": "letter_0033.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$890.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0034",
+    "filename": "letter_0034.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$1,450.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0035",
+    "filename": "letter_0035.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$2,100.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0036",
+    "filename": "letter_0036.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$75.25",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0037",
+    "filename": "letter_0037.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$620.15",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0038",
+    "filename": "letter_0038.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$15.99",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0039",
+    "filename": "letter_0039.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$2,890.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0040",
+    "filename": "letter_0040.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$49.99",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0041",
+    "filename": "letter_0041.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$120.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0042",
+    "filename": "letter_0042.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$349.50",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0043",
+    "filename": "letter_0043.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$890.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0044",
+    "filename": "letter_0044.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$1,450.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0045",
+    "filename": "letter_0045.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$2,100.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0046",
+    "filename": "letter_0046.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$75.25",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0047",
+    "filename": "letter_0047.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$620.15",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0048",
+    "filename": "letter_0048.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$15.99",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0049",
+    "filename": "letter_0049.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$2,890.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0050",
+    "filename": "letter_0050.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$49.99",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0051",
+    "filename": "letter_0051.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$120.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0052",
+    "filename": "letter_0052.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$349.50",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0053",
+    "filename": "letter_0053.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$890.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0054",
+    "filename": "letter_0054.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$1,450.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0055",
+    "filename": "letter_0055.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$2,100.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0056",
+    "filename": "letter_0056.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$75.25",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0057",
+    "filename": "letter_0057.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$620.15",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0058",
+    "filename": "letter_0058.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$15.99",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0059",
+    "filename": "letter_0059.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$2,890.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0060",
+    "filename": "letter_0060.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$49.99",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0061",
+    "filename": "letter_0061.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$120.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0062",
+    "filename": "letter_0062.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$349.50",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0063",
+    "filename": "letter_0063.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$890.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0064",
+    "filename": "letter_0064.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$1,450.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0065",
+    "filename": "letter_0065.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$2,100.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0066",
+    "filename": "letter_0066.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$75.25",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0067",
+    "filename": "letter_0067.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$620.15",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0068",
+    "filename": "letter_0068.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$15.99",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0069",
+    "filename": "letter_0069.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$2,890.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0070",
+    "filename": "letter_0070.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$49.99",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0071",
+    "filename": "letter_0071.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$120.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0072",
+    "filename": "letter_0072.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$349.50",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0073",
+    "filename": "letter_0073.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$890.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0074",
+    "filename": "letter_0074.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$1,450.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0075",
+    "filename": "letter_0075.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$2,100.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0076",
+    "filename": "letter_0076.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$75.25",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0077",
+    "filename": "letter_0077.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$620.15",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0078",
+    "filename": "letter_0078.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$15.99",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0079",
+    "filename": "letter_0079.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$2,890.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0080",
+    "filename": "letter_0080.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$49.99",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0081",
+    "filename": "letter_0081.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$120.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0082",
+    "filename": "letter_0082.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$349.50",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0083",
+    "filename": "letter_0083.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$890.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0084",
+    "filename": "letter_0084.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$1,450.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0085",
+    "filename": "letter_0085.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$2,100.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0086",
+    "filename": "letter_0086.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$75.25",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0087",
+    "filename": "letter_0087.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$620.15",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0088",
+    "filename": "letter_0088.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$15.99",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0089",
+    "filename": "letter_0089.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$2,890.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0090",
+    "filename": "letter_0090.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$49.99",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0091",
+    "filename": "letter_0091.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$120.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0092",
+    "filename": "letter_0092.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$349.50",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0093",
+    "filename": "letter_0093.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$890.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0094",
+    "filename": "letter_0094.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$1,450.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0095",
+    "filename": "letter_0095.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$2,100.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0096",
+    "filename": "letter_0096.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$75.25",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0097",
+    "filename": "letter_0097.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$620.15",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0098",
+    "filename": "letter_0098.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$15.99",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0099",
+    "filename": "letter_0099.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$2,890.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0100",
+    "filename": "letter_0100.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$49.99",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0101",
+    "filename": "letter_0101.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$120.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0102",
+    "filename": "letter_0102.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$349.50",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0103",
+    "filename": "letter_0103.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$890.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0104",
+    "filename": "letter_0104.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$1,450.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0105",
+    "filename": "letter_0105.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$2,100.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0106",
+    "filename": "letter_0106.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$75.25",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0107",
+    "filename": "letter_0107.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$620.15",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0108",
+    "filename": "letter_0108.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$15.99",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0109",
+    "filename": "letter_0109.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$2,890.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0110",
+    "filename": "letter_0110.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$49.99",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0111",
+    "filename": "letter_0111.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$120.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0112",
+    "filename": "letter_0112.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$349.50",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0113",
+    "filename": "letter_0113.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$890.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0114",
+    "filename": "letter_0114.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$1,450.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0115",
+    "filename": "letter_0115.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$2,100.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0116",
+    "filename": "letter_0116.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$75.25",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0117",
+    "filename": "letter_0117.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$620.15",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0118",
+    "filename": "letter_0118.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$15.99",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0119",
+    "filename": "letter_0119.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$2,890.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0120",
+    "filename": "letter_0120.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$49.99",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0121",
+    "filename": "letter_0121.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$120.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0122",
+    "filename": "letter_0122.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$349.50",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0123",
+    "filename": "letter_0123.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$890.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0124",
+    "filename": "letter_0124.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$1,450.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0125",
+    "filename": "letter_0125.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$2,100.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0126",
+    "filename": "letter_0126.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$75.25",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0127",
+    "filename": "letter_0127.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$620.15",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0128",
+    "filename": "letter_0128.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$15.99",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0129",
+    "filename": "letter_0129.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$2,890.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0130",
+    "filename": "letter_0130.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$49.99",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0131",
+    "filename": "letter_0131.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$120.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0132",
+    "filename": "letter_0132.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$349.50",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0133",
+    "filename": "letter_0133.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$890.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0134",
+    "filename": "letter_0134.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$1,450.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0135",
+    "filename": "letter_0135.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$2,100.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0136",
+    "filename": "letter_0136.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$75.25",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0137",
+    "filename": "letter_0137.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$620.15",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0138",
+    "filename": "letter_0138.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$15.99",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0139",
+    "filename": "letter_0139.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$2,890.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0140",
+    "filename": "letter_0140.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$49.99",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0141",
+    "filename": "letter_0141.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$120.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0142",
+    "filename": "letter_0142.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$349.50",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0143",
+    "filename": "letter_0143.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$890.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0144",
+    "filename": "letter_0144.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$1,450.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0145",
+    "filename": "letter_0145.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$2,100.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0146",
+    "filename": "letter_0146.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$75.25",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0147",
+    "filename": "letter_0147.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$620.15",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0148",
+    "filename": "letter_0148.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$15.99",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0149",
+    "filename": "letter_0149.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$2,890.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0150",
+    "filename": "letter_0150.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$49.99",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0151",
+    "filename": "letter_0151.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$120.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0152",
+    "filename": "letter_0152.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$349.50",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0153",
+    "filename": "letter_0153.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$890.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0154",
+    "filename": "letter_0154.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$1,450.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0155",
+    "filename": "letter_0155.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$2,100.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0156",
+    "filename": "letter_0156.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$75.25",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0157",
+    "filename": "letter_0157.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$620.15",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0158",
+    "filename": "letter_0158.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$15.99",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0159",
+    "filename": "letter_0159.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$2,890.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0160",
+    "filename": "letter_0160.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$49.99",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0161",
+    "filename": "letter_0161.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$120.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0162",
+    "filename": "letter_0162.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$349.50",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0163",
+    "filename": "letter_0163.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$890.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0164",
+    "filename": "letter_0164.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$1,450.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0165",
+    "filename": "letter_0165.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$2,100.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0166",
+    "filename": "letter_0166.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$75.25",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0167",
+    "filename": "letter_0167.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$620.15",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0168",
+    "filename": "letter_0168.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$15.99",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0169",
+    "filename": "letter_0169.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$2,890.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0170",
+    "filename": "letter_0170.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$49.99",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0171",
+    "filename": "letter_0171.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$120.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0172",
+    "filename": "letter_0172.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$349.50",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0173",
+    "filename": "letter_0173.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$890.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0174",
+    "filename": "letter_0174.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$1,450.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0175",
+    "filename": "letter_0175.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$2,100.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0176",
+    "filename": "letter_0176.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$75.25",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0177",
+    "filename": "letter_0177.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$620.15",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0178",
+    "filename": "letter_0178.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$15.99",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0179",
+    "filename": "letter_0179.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$2,890.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0180",
+    "filename": "letter_0180.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$49.99",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0181",
+    "filename": "letter_0181.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$120.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0182",
+    "filename": "letter_0182.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$349.50",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0183",
+    "filename": "letter_0183.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$890.00",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0184",
+    "filename": "letter_0184.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$1,450.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0185",
+    "filename": "letter_0185.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$2,100.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0186",
+    "filename": "letter_0186.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$75.25",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0187",
+    "filename": "letter_0187.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$620.15",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0188",
+    "filename": "letter_0188.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$15.99",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0189",
+    "filename": "letter_0189.txt",
+    "merchant": "Fashion Boutique Direct",
+    "amount": "$2,890.00",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0190",
+    "filename": "letter_0190.txt",
+    "merchant": "AutoCare Fuel Station",
+    "amount": "$49.99",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0191",
+    "filename": "letter_0191.txt",
+    "merchant": "CloudStorage Solutions",
+    "amount": "$120.00",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0192",
+    "filename": "letter_0192.txt",
+    "merchant": "TechGalaxy Online",
+    "amount": "$349.50",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0193",
+    "filename": "letter_0193.txt",
+    "merchant": "FlyHigh Airways",
+    "amount": "$890.00",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  },
+  {
+    "id": "LET-0194",
+    "filename": "letter_0194.txt",
+    "merchant": "Grand Imperial Hotel",
+    "amount": "$1,450.00",
+    "date": "2026-09-28",
+    "reason": "charged incorrect foreign currency rate"
+  },
+  {
+    "id": "LET-0195",
+    "filename": "letter_0195.txt",
+    "merchant": "Global Stream Plus",
+    "amount": "$2,100.00",
+    "date": "2026-09-30",
+    "reason": "ATM cash failed to dispense full amount"
+  },
+  {
+    "id": "LET-0196",
+    "filename": "letter_0196.txt",
+    "merchant": "Apex Gym & Fitness",
+    "amount": "$75.25",
+    "date": "2026-08-12",
+    "reason": "unauthorised transaction"
+  },
+  {
+    "id": "LET-0197",
+    "filename": "letter_0197.txt",
+    "merchant": "Urban Supermarket",
+    "amount": "$620.15",
+    "date": "2026-08-25",
+    "reason": "goods never delivered"
+  },
+  {
+    "id": "LET-0198",
+    "filename": "letter_0198.txt",
+    "merchant": "Metro Ride Taxi",
+    "amount": "$15.99",
+    "date": "2026-09-02",
+    "reason": "charged twice for single order"
+  },
+  {
+    "id": "LET-0199",
+    "filename": "letter_0199.txt",
+    "merchant": "QuickDine Delivery",
+    "amount": "$2,890.00",
+    "date": "2026-09-15",
+    "reason": "subscription cancelled but billing continued"
+  },
+  {
+    "id": "LET-0200",
+    "filename": "letter_0200.txt",
+    "merchant": "ElectroMart Supplies",
+    "amount": "$49.99",
+    "date": "2026-09-21",
+    "reason": "defective item seller refused refund"
+  }
+]

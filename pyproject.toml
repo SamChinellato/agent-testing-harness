@@ -1,0 +1,30 @@
+[project]
+name = "maas-agent-demo"
+version = "0.1.0"
+description = "MaaS Rate-Limit Demo Agents and Harness"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "httpx>=0.28.0",
+    "langchain>=0.3.0",
+    "langchain-core>=0.3.0",
+    "langchain-openai>=0.3.0",
+    "langgraph>=0.2.0",
+    "pydantic>=2.10.0",
+    "pydantic-settings>=2.7.0",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
+    "rich>=13.9.0",
+]
+
+[project.scripts]
+agent = "maasagentharness.runner:main"
+dashboard = "maasagentharness.dashboard.app:main"
+probe = "maasagentharness.probe:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["maasagentharness"]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

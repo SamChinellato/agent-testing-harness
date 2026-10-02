@@ -1,0 +1,36 @@
+POLICY REFERENCE: POL-006
+TITLE: Temporary Interest Capitalisation and Relief Policy
+CATEGORY: HARDSHIP
+EFFECTIVE DATE: 2026-01-01
+STATUS: ACTIVE
+AUTHORITY: Retail Banking Operations & Regulatory Compliance Board
+
+1. EXECUTIVE SUMMARY
+This policy document establishes standard operating procedures for temporary interest capitalisation and relief policy within the Retail Banking and Operations divisions. It defines eligibility, assessment thresholds, statutory response timeframes, and customer relief entitlements in compliance with federal banking codes.
+
+2. SCOPE AND ELIGIBILITY
+This framework applies to all individual personal accounts, small business banking relationships, and associated card/credit products. 
+- Primary qualification criteria require a formal application or flagged incident registered within 60 calendar days of occurrence.
+- Threshold limits: Up to $25,000 for standard branch/tier-1 determinations; incidents exceeding $25,000 require Tier-2 Risk Committee sign-off.
+- Customers must provide standard documentation (e.g., bank statements, police reports, proof of cancellation, medical certificates) within 14 business days.
+
+3. DETAILED PROVISIONS & OPERATIONAL GUIDELINES
+3.1. Immediate Actions:
+Upon receipt of a claim or hardship request under INTEREST_FREE_PERIOD, the case officer must:
+(a) Pause automated collections and late fees for a mandatory 30-day moratorium.
+(b) Review account history over the prior 12-month period for prior concessions or suspicious activity.
+(c) Issue a formal acknowledgement notice with unique reference code POL-006-CASE within 48 hours.
+
+3.2. Evaluation Standards:
+- Relief Options: Repayment restructuring, term extension up to 24 months, complete fee waiver, or temporary zero-interest hold.
+- Fraud and Dispute Liability: Customers are fully reimbursed where reasonable care was taken, no PIN disclosure occurred, and notification was provided within 48 hours of discovery.
+- Dispute Timeframes: Standard card dispute investigations conclude within 21 business days; complex cross-border chargebacks within 45 calendar days.
+
+4. ESCALATIONS AND APPEALS
+If the customer disputes the outcome or requires compassionate grounds consideration:
+- The case is referred to the Internal Dispute Resolution (IDR) team.
+- IDR final determination must be communicated in writing within 15 calendar days.
+- External Ombudsman escalation pathways (e.g., AFCA / CFPB) must be clearly provided in all rejection correspondence.
+
+5. RECORD KEEPING AND AUDIT
+All records, voice recordings, signed declarations, and financial evidence must be retained in the central immutable document repository for 7 years.

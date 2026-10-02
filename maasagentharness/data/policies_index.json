@@ -1,0 +1,282 @@
+[
+  {
+    "id": "POL-001",
+    "code": "MORTGAGE_RELIEF",
+    "title": "Mortgage Hardship Assistance and Payment Deferrals",
+    "category": "hardship",
+    "filename": "policy_01_mortgage_relief.txt"
+  },
+  {
+    "id": "POL-002",
+    "code": "UNEMPLOYMENT_SUPPORT",
+    "title": "Short-term Income Disruption and Repayment Holiday Policy",
+    "category": "hardship",
+    "filename": "policy_02_unemployment_support.txt"
+  },
+  {
+    "id": "POL-003",
+    "code": "MEDICAL_HARDSHIP",
+    "title": "Severe Medical Illness and Compassionate Relief Guidelines",
+    "category": "hardship",
+    "filename": "policy_03_medical_hardship.txt"
+  },
+  {
+    "id": "POL-004",
+    "code": "NATURAL_DISASTER_ASSIST",
+    "title": "Emergency Disaster Assistance and Fee Waivers",
+    "category": "hardship",
+    "filename": "policy_04_natural_disaster_assist.txt"
+  },
+  {
+    "id": "POL-005",
+    "code": "DEBT_CONSOLIDATION_HARDSHIP",
+    "title": "Hardship Debt Restructure and Loan Consolidation Rules",
+    "category": "hardship",
+    "filename": "policy_05_debt_consolidation_hardship.txt"
+  },
+  {
+    "id": "POL-006",
+    "code": "INTEREST_FREE_PERIOD",
+    "title": "Temporary Interest Capitalisation and Relief Policy",
+    "category": "hardship",
+    "filename": "policy_06_interest_free_period.txt"
+  },
+  {
+    "id": "POL-007",
+    "code": "SMALL_BUSINESS_HARDSHIP",
+    "title": "Micro-Business Emergency Cash Flow Relief and Forbearance",
+    "category": "hardship",
+    "filename": "policy_07_small_business_hardship.txt"
+  },
+  {
+    "id": "POL-008",
+    "code": "VULNERABLE_CUSTOMER_PROTECTION",
+    "title": "Customer Vulnerability and Financial Wellbeing Framework",
+    "category": "hardship",
+    "filename": "policy_08_vulnerable_customer_protection.txt"
+  },
+  {
+    "id": "POL-009",
+    "code": "DEFAULT_NOTICE_PAUSE",
+    "title": "Moratorium on Enforcement Actions During Assessment",
+    "category": "hardship",
+    "filename": "policy_09_default_notice_pause.txt"
+  },
+  {
+    "id": "POL-010",
+    "code": "RECOVERY_ESCROW_RELEASE",
+    "title": "Compassionate Escrow Release for Distressed Mortgagors",
+    "category": "hardship",
+    "filename": "policy_10_recovery_escrow_release.txt"
+  },
+  {
+    "id": "POL-011",
+    "code": "UNAUTHORISED_TXN",
+    "title": "Unauthorised Electronic and Card Transactions Protocol",
+    "category": "card_disputes",
+    "filename": "policy_11_unauthorised_txn.txt"
+  },
+  {
+    "id": "POL-012",
+    "code": "MERCHANT_NOT_RECEIVED",
+    "title": "Goods or Services Not Received Dispute Resolution",
+    "category": "card_disputes",
+    "filename": "policy_12_merchant_not_received.txt"
+  },
+  {
+    "id": "POL-013",
+    "code": "DEFECTIVE_GOODS",
+    "title": "Defective Goods, Counterfeit Items, and Chargeback Evidence",
+    "category": "card_disputes",
+    "filename": "policy_13_defective_goods.txt"
+  },
+  {
+    "id": "POL-014",
+    "code": "RECURRING_BILLING_CANCELLED",
+    "title": "Subscription and Recurring Billing Cancellation Policy",
+    "category": "card_disputes",
+    "filename": "policy_14_recurring_billing_cancelled.txt"
+  },
+  {
+    "id": "POL-015",
+    "code": "DUPLICATE_PROCESSING",
+    "title": "Duplicate Processing and Incorrect Chargeback Management",
+    "category": "card_disputes",
+    "filename": "policy_15_duplicate_processing.txt"
+  },
+  {
+    "id": "POL-016",
+    "code": "CURRENCY_CONVERSION_ERRORS",
+    "title": "Foreign Exchange Fee and Dynamic Currency Conversion Disputes",
+    "category": "card_disputes",
+    "filename": "policy_16_currency_conversion_errors.txt"
+  },
+  {
+    "id": "POL-017",
+    "code": "ATM_DISCREPANCY",
+    "title": "ATM Cash Dispensation Error and Shortfall Handling",
+    "category": "card_disputes",
+    "filename": "policy_17_atm_discrepancy.txt"
+  },
+  {
+    "id": "POL-018",
+    "code": "TRAVEL_CANCELLATION_REFUND",
+    "title": "Airline, Hotel, and Booking Cancellation Chargeback Framework",
+    "category": "card_disputes",
+    "filename": "policy_18_travel_cancellation_refund.txt"
+  },
+  {
+    "id": "POL-019",
+    "code": "FRAUD_CHIP_PIN_LIABILITY",
+    "title": "Cardholder Liability in Chip-and-PIN and Contactless Transactions",
+    "category": "card_disputes",
+    "filename": "policy_19_fraud_chip_pin_liability.txt"
+  },
+  {
+    "id": "POL-020",
+    "code": "MERCHANT_SURCHARGE_DISPUTES",
+    "title": "Credit and Debit Card Excessive Surcharging Enforcement",
+    "category": "card_disputes",
+    "filename": "policy_20_merchant_surcharge_disputes.txt"
+  },
+  {
+    "id": "POL-021",
+    "code": "OVERDRAFT_FEES_POLICY",
+    "title": "Unarranged Overdraft and Incurred Fee Calculation Rules",
+    "category": "fees",
+    "filename": "policy_21_overdraft_fees_policy.txt"
+  },
+  {
+    "id": "POL-022",
+    "code": "ACCOUNT_KEEPING_WAIVERS",
+    "title": "Monthly Account Keeping Fee Exemption Guidelines",
+    "category": "fees",
+    "filename": "policy_22_account_keeping_waivers.txt"
+  },
+  {
+    "id": "POL-023",
+    "code": "LATE_PAYMENT_GRACE",
+    "title": "Credit Card Late Payment Fee Grace Periods and Assessment",
+    "category": "fees",
+    "filename": "policy_23_late_payment_grace.txt"
+  },
+  {
+    "id": "POL-024",
+    "code": "INTERNATIONAL_TRANSFER_TARIFF",
+    "title": "Wire Transfer and Cross-Border Intermediary Fee Policy",
+    "category": "fees",
+    "filename": "policy_24_international_transfer_tariff.txt"
+  },
+  {
+    "id": "POL-025",
+    "code": "DORMANT_ACCOUNT_RECOVERY",
+    "title": "Dormant Account Inactivity Fees and Funds Reclamation",
+    "category": "fees",
+    "filename": "policy_25_dormant_account_recovery.txt"
+  },
+  {
+    "id": "POL-026",
+    "code": "EARLY_TERMINATION_PENALTY",
+    "title": "Fixed Term Deposit Early Exit Fee Break Costs",
+    "category": "fees",
+    "filename": "policy_26_early_termination_penalty.txt"
+  },
+  {
+    "id": "POL-027",
+    "code": "PAPER_STATEMENT_LEVY",
+    "title": "Paper Statement Fees and Concession Exemptions",
+    "category": "fees",
+    "filename": "policy_27_paper_statement_levy.txt"
+  },
+  {
+    "id": "POL-028",
+    "code": "REPLACEMENT_CARD_TARIFF",
+    "title": "Emergency Replacement Card Courier and Issuance Fees",
+    "category": "fees",
+    "filename": "policy_28_replacement_card_tariff.txt"
+  },
+  {
+    "id": "POL-029",
+    "code": "HIGH_VOLUME_TRANSACTION_FEES",
+    "title": "Commercial Tiered Transaction Limit and Excess Charges",
+    "category": "fees",
+    "filename": "policy_29_high_volume_transaction_fees.txt"
+  },
+  {
+    "id": "POL-030",
+    "code": "DIRECT_DEBIT_DISHONOUR",
+    "title": "Direct Debit Insufficient Funds Dishonour Handling",
+    "category": "fees",
+    "filename": "policy_30_direct_debit_dishonour.txt"
+  },
+  {
+    "id": "POL-031",
+    "code": "ACCOUNT_TAKEOVER_RESPONSE",
+    "title": "Account Takeover Detection and Immediate Mitigation Policy",
+    "category": "fraud",
+    "filename": "policy_31_account_takeover_response.txt"
+  },
+  {
+    "id": "POL-032",
+    "code": "IDENTITY_THEFT_INVESTIGATION",
+    "title": "Identity Theft Reporting and Account Restoration Protocol",
+    "category": "fraud",
+    "filename": "policy_32_identity_theft_investigation.txt"
+  },
+  {
+    "id": "POL-033",
+    "code": "AUTHORIZED_PUSH_PAYMENT",
+    "title": "Authorised Push Payment (APP) Scam Reimbursement Code",
+    "category": "fraud",
+    "filename": "policy_33_authorized_push_payment.txt"
+  },
+  {
+    "id": "POL-034",
+    "code": "SIM_SWAP_PROTECTION",
+    "title": "SIM-Swap Fraud and Step-Up Authentication Controls",
+    "category": "fraud",
+    "filename": "policy_34_sim_swap_protection.txt"
+  },
+  {
+    "id": "POL-035",
+    "code": "PHISHING_COMPROMISE_REMEDY",
+    "title": "Credential Harvesting and Remote Access Scam Remediation",
+    "category": "fraud",
+    "filename": "policy_35_phishing_compromise_remedy.txt"
+  },
+  {
+    "id": "POL-036",
+    "code": "CARD_SKIMMING_PROTOCOLS",
+    "title": "Physical ATM / POS Skimming Detection and Remediation",
+    "category": "fraud",
+    "filename": "policy_36_card_skimming_protocols.txt"
+  },
+  {
+    "id": "POL-037",
+    "code": "MULE_ACCOUNT_INTERDICTION",
+    "title": "Money Mule and Layering Ring Account Freeze Guidelines",
+    "category": "fraud",
+    "filename": "policy_37_mule_account_interdiction.txt"
+  },
+  {
+    "id": "POL-038",
+    "code": "HIGH_RISK_CRYPTO_BLOCK",
+    "title": "Prohibited and High-Risk Cryptocurrency Exchange Outflows",
+    "category": "fraud",
+    "filename": "policy_38_high_risk_crypto_block.txt"
+  },
+  {
+    "id": "POL-039",
+    "code": "SENIOR_FINANCIAL_EXPLOITATION",
+    "title": "Elder Abuse and Coerced Transaction Intervention",
+    "category": "fraud",
+    "filename": "policy_39_senior_financial_exploitation.txt"
+  },
+  {
+    "id": "POL-040",
+    "code": "INTERNAL_FRAUD_WHISTLEBLOWING",
+    "title": "Staff Malfeasance and Whistleblower Protection Mandate",
+    "category": "fraud",
+    "filename": "policy_40_internal_fraud_whistleblowing.txt"
+  }
+]
