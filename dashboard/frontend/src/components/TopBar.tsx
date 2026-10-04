@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Button, Label } from '@patternfly/react-core';
+import { Button, Label, Modal, ModalBody, ModalFooter, ModalHeader, ModalVariant } from '@patternfly/react-core';
 import { api, ApiError } from '../api/client';
 import type { Snapshot } from '../api/types';
 import { useLive, type Connection } from '../state/store';
@@ -14,7 +14,9 @@ const CONNECTION: Record<Connection, { text: string; colour: 'green' | 'orange' 
 export function TopBar({ snapshot }: { snapshot: Snapshot | null }) {
   const connection = useLive((s) => s.connection);
   const [busy, setBusy] = useState(false);
+  const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const running = snapshot?.workers.filter((w) => w.desired.state === 'running') ?? [];
   const link = CONNECTION[connection];
 
@@ -30,6 +32,25 @@ export function TopBar({ snapshot }: { snapshot: Snapshot | null }) {
     setBusy(false);
   }
 
+  async function clear() {
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await api.clearState();
+      const kept = result.kept.length;
+      setNotice(
+        `Removed ${result.removed.length} worker${result.removed.length === 1 ? '' : 's'}.` +
+          (kept > 0 ? ` Kept ${kept} running.` : ''),
+      );
+      setConfirming(false);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : String(e));
+      setConfirming(false);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <header className="topbar">
       <h1 className="wordmark">Agent bench</h1>
@@ -40,12 +61,40 @@ export function TopBar({ snapshot }: { snapshot: Snapshot | null }) {
         <Button variant="secondary" isDisabled={busy || running.length === 0} onClick={() => void stopAll()}>
           Stop all
         </Button>
+        <Button variant="secondary" isDisabled={busy} onClick={() => { setNotice(null); setConfirming(true); }}>
+          Clear
+        </Button>
       </div>
       {error && (
-        <p role="alert" className="form-error" style={{ flexBasis: '100%', margin: 0, color: 'var(--throttle)' }}>
+        <p role="alert" style={{ flexBasis: '100%', margin: 0, color: 'var(--throttle)' }}>
           {error}
         </p>
       )}
+      {notice && !error && (
+        <p role="status" style={{ flexBasis: '100%', margin: 0, color: 'var(--ink-2)', fontSize: 'var(--type-sm)' }}>
+          {notice}
+        </p>
+      )}
+
+      <Modal
+        variant={ModalVariant.small}
+        isOpen={confirming}
+        onClose={() => setConfirming(false)}
+        aria-label="Clear the bench"
+      >
+        <ModalHeader title="Clear the bench?" />
+        <ModalBody>
+          Stopped and lost workers are removed, and the call log is emptied. Running workers and budgets are kept.
+        </ModalBody>
+        <ModalFooter>
+          <Button variant="danger" isDisabled={busy} onClick={() => void clear()}>
+            Clear
+          </Button>
+          <Button variant="link" onClick={() => setConfirming(false)}>
+            Cancel
+          </Button>
+        </ModalFooter>
+      </Modal>
     </header>
   );
 }

@@ -97,6 +97,27 @@ async def receive_event(event: TelemetryEvent):
     return {"status": "ok"}
 
 
+@app.post("/api/state/clear")
+async def clear_state(request: Request):
+    """Forget every worker that is stopped or lost, and empty the call log.
+
+    Running workers are kept, so nothing that is still working is removed by
+    accident. Budgets are configuration and are kept. Metrics counters are
+    not reset, because a counter that goes backwards breaks rate().
+    """
+    global events_buffer
+    store: WorkerStore = request.app.state.worker_store
+    removed, kept = [], []
+    for w in await store.list():
+        if w.desired_state == "stopped" and w.status in ("stopped", "lost", "unknown", "errored"):
+            await store.delete(w.worker_id)
+            removed.append(w.worker_id)
+        else:
+            kept.append(w.worker_id)
+    events_buffer = []
+    return {"removed": removed, "kept": kept}
+
+
 @app.get("/metrics", response_class=PlainTextResponse)
 async def prometheus_metrics():
     """Prometheus exposition format. Cumulative since the process started, so

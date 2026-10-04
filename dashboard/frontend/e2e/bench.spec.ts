@@ -78,3 +78,22 @@ test('the scenario launcher lists valid scenario files', async ({ page }) => {
   await expect(page.getByText('steady-vs-runaway.yaml')).toBeVisible();
   await expect(page.getByRole('button', { name: 'Launch steady-vs-runaway.yaml' })).toBeEnabled();
 });
+
+test('Clear asks first, and Cancel changes nothing', async ({ page, request }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Clear the bench' });
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button', { name: 'Cancel' }).click();
+  await expect(dialog).toBeHidden();
+  const workers = await (await request.get('/api/workers')).json();
+  expect(workers.some((w: { worker_id: string }) => w.worker_id === fleet.workers[0].id)).toBe(true);
+});
+
+test('Clear keeps running workers and reports what it kept', async ({ page }) => {
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Clear', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Clear the bench' }).getByRole('button', { name: 'Clear', exact: true }).click();
+  await expect(page.getByRole('status').filter({ hasText: /Kept \d+ running/ })).toBeVisible();
+  await expect(row(page, 'Dispute triage')).toBeVisible();
+});

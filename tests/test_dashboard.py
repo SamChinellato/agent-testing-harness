@@ -199,3 +199,18 @@ async def test_sparkline_last_point_matches_live_rate(client):
     worker = snap["workers"][0]
     assert worker["series"][-1] == worker["live"]["tokens_per_minute"] == 450
     assert len(worker["series"]) == len(snap["buckets"]) == 12
+
+
+async def test_clear_state_forgets_stopped_workers_and_keeps_running_ones(client):
+    await client.post("/api/workers", json={"worker_id": "idle", "team": "t"})
+    await client.post("/api/workers", json={"worker_id": "busy", "team": "t"})
+    await client.patch("/api/workers/busy/desired", json={"state": "running"})
+    await client.post("/events", json=_event())
+
+    resp = await client.post("/api/state/clear")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["removed"] == ["idle"]
+    assert body["kept"] == ["busy"]
+    assert (await client.get("/api/workers/idle/desired")).json()["unregistered"] is True
+    assert dashboard_app.events_buffer == []

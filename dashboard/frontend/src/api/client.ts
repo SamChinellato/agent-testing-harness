@@ -44,5 +44,6 @@ export const api = {
     request('PUT', `/api/budgets/${encodeURIComponent(budgetId)}`, body),
   launchRun: (scenarioPath: string) =>
     request<{ run: string; spawned: string[] }>('POST', '/api/runs', { scenario_path: scenarioPath }),
+  clearState: () => request<{ removed: string[]; kept: string[] }>('POST', '/api/state/clear'),
   scenarios: () => request<import('./types').ScenarioFile[]>('GET', '/api/scenarios'),
 };
