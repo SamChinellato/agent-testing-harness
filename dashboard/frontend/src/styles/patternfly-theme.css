@@ -99,3 +99,35 @@
 .pf-v6-c-modal-box.pf-v6-c-modal-box .pf-v6-c-modal-box__body {
   color: var(--ink);
 }
+
+/* Row menu (the ⋮ menu that holds the behaviours): PatternFly paints a white
+ * popup and sets its own text colours. Use the panel surface, ink text, and an
+ * inset highlight for the hovered and selected items. */
+.pf-v6-c-menu.pf-v6-c-menu {
+  --pf-v6-c-menu--BackgroundColor: var(--surface-panel);
+  background-color: var(--surface-panel);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+}
+
+.pf-v6-c-menu.pf-v6-c-menu .pf-v6-c-menu__item,
+.pf-v6-c-menu.pf-v6-c-menu .pf-v6-c-menu__item-text,
+.pf-v6-c-menu.pf-v6-c-menu .pf-v6-c-menu__item-main {
+  color: var(--ink);
+}
+
+.pf-v6-c-menu.pf-v6-c-menu .pf-v6-c-menu__item:hover,
+.pf-v6-c-menu.pf-v6-c-menu .pf-v6-c-menu__item.pf-m-selected,
+.pf-v6-c-menu.pf-v6-c-menu .pf-v6-c-menu__item:focus-visible {
+  background-color: var(--surface-inset);
+}
+
+.pf-v6-c-menu.pf-v6-c-menu .pf-v6-c-menu__item.pf-m-selected .pf-v6-c-menu__item-text,
+.pf-v6-c-menu.pf-v6-c-menu .pf-v6-c-menu__item.pf-m-selected .pf-v6-c-menu__item-main {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.pf-v6-c-menu.pf-v6-c-menu .pf-v6-c-menu__item.pf-m-disabled .pf-v6-c-menu__item-text {
+  color: var(--ink-3);
+}
