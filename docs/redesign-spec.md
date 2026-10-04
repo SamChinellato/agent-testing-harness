@@ -438,9 +438,12 @@ that actually run under pytest (#26).
 contracts, module layout, task breakdown per phase) is in
 [phase-1-5-implementation-plan.md](phase-1-5-implementation-plan.md). Summary:
 
-**Phase 1 — control plane v2.** SQLite state store; typed desired-state patches; generations and
-`applied_generation`; heartbeats and leases; `starting/running/draining/stopped/unknown/lost` phases;
-supervisor that spawns and signals managed workers; three-phase stop. *Kills symptom 2.1 entirely.*
+**Phase 1 — control plane v2.** ✅ **Implemented.** SQLite state store; typed desired-state
+patches; generations and `applied_generation`; heartbeats and leases; `starting/running/draining/
+stopped/unknown/lost` phases; supervisor that spawns and signals managed workers; three-phase stop
+(interrupt is poll-based rather than an instant task-cancel — see
+[phase-1-5-implementation-plan.md](phase-1-5-implementation-plan.md) §1.9 for why). *Kills symptom
+2.1 entirely.*
 
 **Phase 2 — budgets.** Scoped `Budget` objects, effective-rate resolution, `shadow` enforcement,
 form-submit editor with Apply/Revert. *Kills symptom 2.2.*

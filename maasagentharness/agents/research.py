@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 from pydantic import BaseModel, Field
 
-from maasagentharness.harness import ModelHarness, RateLimitExceeded, WorkerStopped
+from maasagentharness.harness import ModelHarness, RateLimitExceeded, WorkerStopped, WorkerInterrupted
 
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -72,7 +72,7 @@ Output only a valid JSON array of strings representing the sub-questions. Do not
                     sub_questions = json.loads(match.group(0))
                 else:
                     sub_questions = [line.strip("- 1234567890.") for line in response.split("\n") if line.strip()][:8]
-            except WorkerStopped:
+            except (WorkerStopped, WorkerInterrupted):
                 # Propagate — a Stop command, not a planner failure to fall back from.
                 raise
             except Exception:
@@ -117,7 +117,7 @@ Provide a concise, factual 2-sentence answer based strictly on the policy excerp
                     answer="[UNAVAILABLE: Request rate limited by MaaS gateway (429)]",
                     status="throttled",
                 )
-            except WorkerStopped:
+            except (WorkerStopped, WorkerInterrupted):
                 # Phase 0 fix #0.3/#0.4: a Stop command interrupted this
                 # worker call. Propagate rather than recording it as a
                 # "failed" result — the research cycle itself is being
@@ -168,7 +168,7 @@ Provide an executive summary synthesis."""
                 )
             except RateLimitExceeded:
                 synthesis = f"Synthesis incomplete: Synthesizer throttled (429). {len(successful_answers)} of {len(state.worker_results)} sub-questions resolved successfully."
-            except WorkerStopped:
+            except (WorkerStopped, WorkerInterrupted):
                 raise
             except Exception as e:
                 synthesis = f"Synthesis incomplete: {str(e)}. {len(successful_answers)} of {len(state.worker_results)} sub-questions resolved."

@@ -89,3 +89,13 @@ htmlcov/
 *.log
 *.tmp
 *.bak
+
+# =============================================================================
+# Phase 1 control-plane state (SQLite, WAL mode) — local runtime state, never committed
+# =============================================================================
+harness_state.db
+harness_state.db-wal
+harness_state.db-shm
+*.db
+*.db-wal
+*.db-shm

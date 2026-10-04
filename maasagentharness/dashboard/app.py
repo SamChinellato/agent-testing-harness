@@ -12,14 +12,33 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
+from maasagentharness.control.api import router as workers_router
+from maasagentharness.control.limits import effective_limit_tpm, team_limits, worker_limits
+from maasagentharness.control.store import WorkerStore
+from maasagentharness.control.supervisor import Supervisor
 from maasagentharness.telemetry import TelemetryEvent
 
 _shutdown_event = asyncio.Event()
 
+HARNESS_DB_PATH = os.getenv("HARNESS_DB_PATH", "harness_state.db")
+
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
+    # Phase 1: the worker fleet now lives in a real SQLite store instead of
+    # a module-level dict — see redesign-spec.md finding #6. One store per
+    # dashboard process; `app.state` (not a module global) is the handle, so
+    # tests can spin up isolated instances against a temp db path.
+    store = WorkerStore(HARNESS_DB_PATH)
+    await store.connect()
+    app.state.worker_store = store
+    app.state.supervisor = Supervisor(store)
+    reaper_task = asyncio.create_task(app.state.supervisor.start_reaper())
+
     yield
+
+    reaper_task.cancel()
+    await store.close()
     # Phase 0 fix #0.13: @app.on_event("shutdown") is deprecated in current
     # FastAPI; a lifespan context manager is the supported replacement and
     # does the same job — flip the event so /events/stream's wait races exit
@@ -28,6 +47,7 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(title="MaaS Rate-Limit Demo Dashboard API", lifespan=_lifespan)
+app.include_router(workers_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -46,13 +66,27 @@ BUCKET_SECONDS = 5
 events_buffer: List[TelemetryEvent] = []
 _next_seq = 0  # Phase 0 fix #0.9 — monotonically increasing event id.
 
-# Dynamically populated as agents register
-control_states: Dict[str, Any] = {}
-
-# Agent display metadata — populated on registration
-agent_registry: Dict[str, Any] = {}
-
-team_limits: Dict[str, int] = {}
+# --- Legacy v1 control API -------------------------------------------------
+# Everything below this line that reads/writes `worker_limits`, `team_limits`,
+# or `registered_mode_defaults` is the v1 compatibility layer: /register,
+# /control/{id}, /act/{N}, /reset, /limits/{team}. These exist for two
+# reasons: (1) any agent still running the pre-Phase-1 runner.py talks to
+# them, and (2) the *shipped* React dashboard (dashboard/frontend) still
+# calls them and isn't rebuilt until Phase 5. Both now delegate to the same
+# `WorkerStore` the new /api/workers routes use — there is exactly one
+# source of truth for fleet state, persisted, surviving a dashboard
+# restart. That's the actual fix for redesign-spec.md finding #6; this
+# module just also happens to keep presenting it in the old shape so nothing
+# upstream breaks.
+#
+# `limit_tpm` has no home in the v2 WorkerRecord schema on purpose — Phase 2
+# replaces it with a proper scoped `Budget` object (see
+# docs/phase-1-5-implementation-plan.md §Phase 2). `team_limits` and
+# `worker_limits` live in control/limits.py (not here) because control/api.py's
+# v2 `/desired` route needs to read them too, to keep a worker's pacer in
+# sync after Phase 1 moved it off the legacy /control/{id} endpoint — see
+# that module's docstring.
+registered_mode_defaults: Dict[str, str] = {}
 
 
 class AgentRegistration(BaseModel):
@@ -85,29 +119,57 @@ class ControlPatch(BaseModel):
     limit_tpm: Optional[int] = None
 
 
-@app.post("/register")
-async def register_agent(reg: AgentRegistration):
-    """Called by agent on startup to register itself with the dashboard."""
-    if reg.user not in control_states:
-        control_states[reg.user] = {
-            "user": reg.user,
-            "team": reg.team,
-            "state": "stopped",
-            "agent": reg.agent,
-            "mode": reg.mode,
-            "limit_tpm": reg.limit_tpm,
-            "unregistered": False,
-        }
-    agent_registry[reg.user] = {
-        "user": reg.user,
-        "team": reg.team,
-        "display_name": reg.display_name or reg.user,
-        "task_description": reg.task_description,
-        "agent": reg.agent,
-        "mode": reg.mode,
+def _legacy_control_shape(w) -> Dict[str, Any]:
+    """WorkerRecord -> the pre-Phase-1 /control/{id} response shape, plus a
+    few additive fields (`status`, `phase`, `generation`) that the current
+    frontend ignores but a future one (or a curious `curl`) can already use.
+    """
+    return {
+        "user": w.worker_id,
+        "team": w.team,
+        "state": w.desired_state,
+        "agent": w.desired_agent,
+        "mode": w.desired_mode,
+        "limit_tpm": worker_limits.get(w.worker_id, team_limits.get(w.team, 2000)),
+        "unregistered": False,
+        "status": w.status,
+        "phase": str(w.phase),
+        "generation": w.generation,
+        "applied_generation": w.applied_generation,
     }
-    if reg.team not in team_limits:
-        team_limits[reg.team] = reg.limit_tpm
+
+
+def _legacy_registry_shape(w) -> Dict[str, Any]:
+    return {
+        "user": w.worker_id,
+        "team": w.team,
+        "display_name": w.display_name,
+        "task_description": w.task_description,
+        "agent": w.desired_agent,
+        "mode": w.desired_mode,
+    }
+
+
+@app.post("/register")
+async def register_agent(reg: AgentRegistration, request: Request):
+    """Called by agent on startup to register itself with the dashboard.
+
+    Legacy v1 route — delegates to the same WorkerStore `POST /api/workers`
+    uses. Kept for agents still running the pre-Phase-1 runner.py.
+    """
+    store: WorkerStore = request.app.state.worker_store
+    await store.register(
+        worker_id=reg.user,
+        team=reg.team,
+        display_name=reg.display_name or reg.user,
+        task_description=reg.task_description,
+        managed=False,
+        agent=reg.agent,
+        mode=reg.mode,
+    )
+    worker_limits.setdefault(reg.user, reg.limit_tpm)
+    team_limits.setdefault(reg.team, reg.limit_tpm)
+    registered_mode_defaults.setdefault(reg.user, reg.mode)
     return {"status": "registered", "user": reg.user}
 
 
@@ -147,15 +209,13 @@ async def receive_event(event: TelemetryEvent):
 
 
 @app.get("/control/{user_id}")
-async def get_control(user_id: str):
-    if user_id in control_states:
-        return control_states[user_id]
-    # Phase 0 fix #0.1: this used to return state="running" for ANY unknown
-    # user_id — so restarting the dashboard, or starting an agent before the
-    # dashboard is up, meant that agent silently kept calling the model with
-    # no card in the UI to stop it. Unknown now means stopped, with an
-    # explicit `unregistered` flag so the agent (and later the UI) can tell
-    # "never registered" apart from "registered and stopped".
+async def get_control(user_id: str, request: Request):
+    store: WorkerStore = request.app.state.worker_store
+    record = await store.get(user_id)
+    if record is not None:
+        return _legacy_control_shape(record)
+    # Phase 0 fix #0.1 (carried into v2's store): unknown worker means
+    # stopped, with an explicit `unregistered` flag — never "running".
     return {
         "user": user_id,
         "team": "unknown",
@@ -168,64 +228,85 @@ async def get_control(user_id: str):
 
 
 @app.post("/control/{user_id}")
-async def update_control(user_id: str, patch: ControlPatch):
-    if user_id not in control_states:
+async def update_control(user_id: str, patch: ControlPatch, request: Request):
+    store: WorkerStore = request.app.state.worker_store
+    record = await store.get(user_id)
+    if record is None:
         raise HTTPException(
             status_code=404,
             detail=f"Unknown worker '{user_id}' — it must call POST /register before its control state can be changed.",
         )
-    control_states[user_id].update(patch.model_dump(exclude_none=True))
-    return control_states[user_id]
+
+    state_patch = {
+        k: v for k, v in patch.model_dump(exclude_none=True).items()
+        if k in ("state", "agent", "mode")
+    }
+    if state_patch:
+        record = await store.patch_desired(user_id, state_patch)
+    if patch.limit_tpm is not None:
+        worker_limits[user_id] = patch.limit_tpm
+        record = await store.get(user_id)
+
+    return _legacy_control_shape(record)
 
 
 @app.post("/limits/{team_id}")
-async def update_team_limit(team_id: str, payload: Dict[str, Any]):
-    new_limit = payload.get("limit_tpm", 2000)
-    team_limits[team_id] = int(new_limit)
-    for u, state in control_states.items():
-        if state.get("team") == team_id:
-            state["limit_tpm"] = int(new_limit)
-    return {"team": team_id, "limit_tpm": team_limits[team_id]}
+async def update_team_limit(team_id: str, payload: Dict[str, Any], request: Request):
+    store: WorkerStore = request.app.state.worker_store
+    new_limit = int(payload.get("limit_tpm", 2000))
+    team_limits[team_id] = new_limit
+    for w in await store.list():
+        if w.team == team_id:
+            worker_limits[w.worker_id] = new_limit
+    return {"team": team_id, "limit_tpm": new_limit}
 
 
 @app.post("/act/{act_num}")
-async def set_act(act_num: int):
+async def set_act(act_num: int, request: Request):
+    store: WorkerStore = request.app.state.worker_store
+    workers = await store.list()
     if act_num == 1:
-        # Normal Operations: stop runaway agents, start all paced except first registered
-        users = list(control_states.keys())
-        for i, u in enumerate(users):
+        # Normal Operations: stop first registered agent, start all others paced
+        for i, w in enumerate(workers):
             if i == 0:
-                control_states[u].update({"state": "stopped"})
+                await store.patch_desired(w.worker_id, {"state": "stopped"})
             else:
-                control_states[u].update({"state": "running", "mode": "paced"})
+                await store.patch_desired(w.worker_id, {"state": "running", "mode": "paced"})
     elif act_num == 2:
         # Runaway: start all agents, first one goes runaway
-        users = list(control_states.keys())
-        for i, u in enumerate(users):
+        for i, w in enumerate(workers):
             if i == 0:
-                control_states[u].update({"state": "running", "mode": "runaway"})
+                await store.patch_desired(w.worker_id, {"state": "running", "mode": "runaway"})
             else:
-                control_states[u].update({"state": "running", "mode": "paced"})
-    return {"act": act_num, "control": control_states, "limits": team_limits}
+                await store.patch_desired(w.worker_id, {"state": "running", "mode": "paced"})
+    workers = await store.list()
+    return {
+        "act": act_num,
+        "control": {w.worker_id: _legacy_control_shape(w) for w in workers},
+        "limits": team_limits,
+    }
 
 
 @app.post("/reset")
-async def reset():
+async def reset(request: Request):
     global events_buffer
+    store: WorkerStore = request.app.state.worker_store
     events_buffer = []
-    for u in control_states:
-        control_states[u]["state"] = "stopped"
-        # Restore mode from registry
-        if u in agent_registry:
-            control_states[u]["mode"] = agent_registry[u]["mode"]
-    return {"status": "reset", "control": control_states, "limits": team_limits}
+    for w in await store.list():
+        default_mode = registered_mode_defaults.get(w.worker_id, w.desired_mode)
+        await store.patch_desired(w.worker_id, {"state": "stopped", "mode": default_mode})
+    workers = await store.list()
+    return {
+        "status": "reset",
+        "control": {w.worker_id: _legacy_control_shape(w) for w in workers},
+        "limits": team_limits,
+    }
 
 
-def calculate_metrics():
+async def calculate_metrics(registered_users: List[str]):
     """Calculate rolling 1-minute tokens per minute per registered agent."""
     now = time.time()
     one_min_ago = now - 60.0
-    registered_users = list(control_states.keys())
 
     user_metrics = {
         u: {"tpm": 0, "status_429_count": 0, "total_calls": 0, "latest_status": 200, "latest_node": "idle", "latency_ms": 0}
@@ -293,15 +374,20 @@ def calculate_metrics():
 @app.get("/events/stream")
 async def events_stream(request: Request):
     """SSE endpoint streaming live telemetry updates once per second."""
+    store: WorkerStore = request.app.state.worker_store
+
     async def event_generator():
         try:
             while not _shutdown_event.is_set():
                 if await request.is_disconnected():
                     break
-                metrics_data = calculate_metrics()
+                workers = await store.list()
+                control = {w.worker_id: _legacy_control_shape(w) for w in workers}
+                agent_registry = {w.worker_id: _legacy_registry_shape(w) for w in workers}
+                metrics_data = await calculate_metrics(list(control.keys()))
                 payload = {
                     "timestamp": time.time(),
-                    "control": control_states,
+                    "control": control,
                     "limits": team_limits,
                     "agent_registry": agent_registry,
                     **metrics_data,
@@ -348,6 +434,12 @@ if FRONTEND_DIST.exists():
 # to FRONTEND_DIST — the previous version did `FRONTEND_DIST / full_path`
 # with no check that the resolved path was still inside FRONTEND_DIST, which
 # is a path-traversal hole.
+#
+# This still shadows nothing under /api/workers/* because FastAPI matches
+# routes in registration order and `workers_router` was included above,
+# before this catch-all. The full /api prefix migration for the *legacy*
+# routes above is deferred to Phase 5 alongside the frontend rewrite (see
+# redesign-spec.md finding #19's route-prefix half).
 @app.get("/{full_path:path}")
 async def serve_spa(full_path: str):
     if not FRONTEND_DIST.exists():

@@ -1,6 +1,8 @@
 # Phase 1–5 — Implementation Plan
 
-**Status:** draft — ready to start after [phase-0-hotfixes.md](phase-0-hotfixes.md)
+**Status:** Phase 1 ✅ **implemented** (branch `phase1-control-plane`) — see §Phase 1's
+"Implementation notes" subsection for what shipped and where it deviated from this plan.
+Phases 2–5 still draft.
 **Parent:** [redesign-spec.md](redesign-spec.md) §4, §6
 **Purpose:** this is the actionable, file-by-file companion to the architecture in
 `redesign-spec.md` §4. That document explains *why*; this one specifies *what to build*: concrete
@@ -151,6 +153,65 @@ The dashboard process becomes the parent of every managed worker — this is wha
 6. Compatibility shims for the 3 old routes.
 7. Tests: generation convergence, lease expiry → `lost`, self-healing re-register on heartbeat,
    interrupt cancels within ~100ms (fake slow endpoint), kill actually terminates a spawned PID.
+
+### 1.9 Implementation notes (what actually shipped, and where it deviated)
+
+**Files added:** `control/__init__.py`, `control/models.py`, `control/store.py`,
+`control/client.py` (worker-side HTTP client — not in the original §1.8 list, split out of
+`runner.py` so the transport is independently testable), `control/supervisor.py`, `control/api.py`,
+`control/limits.py` (new — see below). **Files rewritten:** `runner.py`, `dashboard/app.py`.
+**Tests added:** `tests/test_control_plane.py` (store, supervisor, API routes, and a full
+`AgentWorker` run driven against the real FastAPI app over `httpx.ASGITransport` — no real sockets,
+no port to bind). **Verified:** `uv run pytest tests/ -q` → 39 passed (up from Phase 0's 18),
+including a real subprocess spawn+`SIGTERM`+kill and an end-to-end Start→running→Stop→stopped
+convergence test against the live app.
+
+**Deviation 1 — "Interrupt" is poll-based, not an in-process task handle.** The original §1.5 table
+said Interrupt works by holding "one `asyncio.Task` handle per managed worker's current call" and
+calling `.cancel()` on it. That's only possible if the worker runs *in the same process* as the
+API server. It doesn't, even for `managed=true` workers — the supervisor spawns them as a *separate
+process*, so the dashboard has a PID, not a Task. What actually shipped: `WorkerRecord.interrupt_token`
+(an incrementing counter, bumped by `POST /interrupt`) is returned on every `GET /desired` poll;
+the worker compares it to the last token it saw and, on a change, sets a local `interrupt_event`
+that `ModelHarness` checks at the same points as `stop_event` (see `WorkerInterrupted`'s docstring
+in `harness.py`) — except retry/backoff sleeps, which only `stop_event` interrupts. This bounds
+Interrupt to the ~1s poll interval rather than making it instant, and it's explicitly single-shot
+(consuming the token clears the local event, so it can't abort a call that starts after the
+interrupt was requested but before the next poll — except for one known edge case: if no call was
+in flight *at all* when the interrupt was requested, the event stays set and aborts whichever call
+starts next, instead of being discarded as "nothing to interrupt." Documented as acceptable for
+Phase 1 in `WorkerInterrupted`'s docstring; revisit if it proves surprising in practice.
+
+**Deviation 2 — a TPM-limit bridge that wasn't in the original schema.** `WorkerRecord` deliberately
+has no `limit_tpm` field (that's Phase 2's `Budget`). But the *currently shipped* React dashboard's
+TPM editor still needs to reach a worker's pacer somehow, and rewiring `runner.py` onto the v2
+`/desired` endpoint — which doesn't carry `limit_tpm` — would have silently disconnected that editor
+from the pacer it used to update (the editor would keep returning 200; nothing downstream would
+change). Fixed with `control/limits.py`: two plain dicts (`team_limits`, `worker_limits`) shared
+between the legacy v1 routes in `dashboard/app.py` and the v2 `/desired` route in `control/api.py`
+(which now returns an extra, explicitly-transitional `limit_tpm` field), plus a resolution helper
+`effective_limit_tpm` using the same worker > team precedence Phase 2's real `Budget` scoping will
+use. `runner.py` applies it to `self.harness.pacer.update_target(...)` on every poll tick. This is
+a deliberate stopgap, not scope creep — the alternative was shipping Phase 1 with a working control
+plane that quietly broke rate-limit testing, which is the other half of what this whole redesign is
+for.
+
+**Deviation 3 — the legacy v1 routes aren't just "shims kept for old agents," they're load-bearing.**
+§1.7 described `/register`/`/control/{id}` as compatibility shims for agents still running old code.
+What shipped goes further: `/register`, `/control/{id}`, `/act/{N}`, `/reset`, and `/limits/{team}`
+in `dashboard/app.py` now all delegate to the *same* `WorkerStore` the new `/api/workers` routes use
+— there is exactly one source of truth for fleet state. This matters because the *shipped* React
+dashboard (not rebuilt until Phase 5) still calls these routes exclusively; without this, Phase 1
+would have fixed persistence and liveness only for a `/api/workers` API nothing uses yet, while the
+dashboard you actually open in a browser kept reading from a dict that resets on restart. Now it
+doesn't — findings #1, #5, and #6 are fixed for the UI you have today, not just for the one Phase 5
+builds. The actual `/api` URL-prefix migration for these routes (the other half of finding #19) is
+still deferred to Phase 5, as planned.
+
+**Not yet done from §1.6:** the `spawn` route exists and is tested (real subprocess, real
+`SIGTERM`/`SIGKILL`), but nothing yet calls it automatically — there's no "managed worker" creation
+flow in the UI (that's Phase 5's `ScenarioLauncher`/`FleetView`). `managed=true` workers today can
+only be spawned by calling `POST /api/workers/{id}/spawn` directly.
 
 ---
 

@@ -1,15 +1,13 @@
 import asyncio
 import json
-import os
-import sys
-import time
 from pathlib import Path
-from typing import Any, Dict, Optional
-import httpx
-from pydantic import BaseModel
+from typing import Optional
 
 from maasagentharness.config import settings
-from maasagentharness.harness import ModelHarness, WorkerStopped
+from maasagentharness.control.client import ControlClient
+from maasagentharness.control.models import DesiredStateResponse, Phase
+from maasagentharness.harness import ModelHarness, WorkerInterrupted, WorkerStopped
+from maasagentharness.telemetry import TelemetryEvent, telemetry
 from maasagentharness.agents.research import ResearchAgent
 from maasagentharness.agents.triage import TriageAgent
 from maasagentharness.agents.assistant import AssistantAgent
@@ -17,47 +15,61 @@ from maasagentharness.agents.assistant import AssistantAgent
 DATA_DIR = Path(__file__).parent / "data"
 
 
-class AgentControlState(BaseModel):
-    user: str
-    state: str = "running"  # "running" or "stopped"
-    agent: str = "triage"  # "triage", "research", "assistant"
-    mode: str = "naive"  # "naive", "paced", "runaway"
-    limit_tpm: int = 2000
-    # Phase 0 fix #0.1: set by the dashboard when this user_id has never
-    # called /register. Informational on this side — the dashboard already
-    # encodes "never seen" as state="stopped", this just makes it explicit
-    # for logging rather than silently indistinguishable from a real stop.
-    unregistered: bool = False
-
-
 class AgentWorker:
+    """Phase 1: talks to the v2 control API (`/api/workers/...`) instead of
+    the legacy `/register` + `/control/{id}` pair. The stop/interrupt
+    mechanism from Phase 0 (docs/phase-0-hotfixes.md #0.3/#0.4) is
+    unchanged — `stop_event` is still threaded through every ModelHarness
+    and checked before every call/wait/backoff sleep. What's new here is:
+
+    - a `generation`-aware poll loop, so "pending" is a real, derivable
+      concept rather than something the old /control/{id} GET/POST pair
+      had no way to express;
+    - heartbeats, so the dashboard's SQLite store has an up-to-date,
+      *persistent* picture of this worker's observed state — surviving a
+      dashboard restart, which Phase 0 could not fix on its own
+      (redesign-spec.md finding #6);
+    - a second, single-shot `interrupt_event`, distinct from `stop_event`,
+      wired the same way into ModelHarness — see WorkerInterrupted's
+      docstring in harness.py for exactly what it does and doesn't cover.
+    """
+
     def __init__(
         self,
         user_id: str = settings.user_id,
         team_id: str = settings.team_id,
         dashboard_url: str = settings.dashboard_url,
+        control_transport=None,
     ):
         self.user_id = user_id
         self.team_id = team_id
         self.dashboard_url = dashboard_url
-        self.control_state = AgentControlState(
-            user=self.user_id,
-            state="stopped",
-            agent=settings.agent_type,
-            mode=settings.agent_mode,
-            limit_tpm=settings.limit_tpm,
+
+        self.control = ControlClient(
+            dashboard_url=dashboard_url,
+            worker_id=user_id,
+            team_id=team_id,
+            display_name=self.display_name,
+            task_description=self.task_description,
+            transport=control_transport,
         )
-        self.current_harness: Optional[ModelHarness] = None
-        # Phase 0 fix #0.3/#0.4: this event is threaded into every
-        # ModelHarness this worker creates. It is checked before every model
-        # call, every pacer wait, and every retry/backoff sleep, so a Stop
-        # command takes effect within milliseconds rather than at the end of
-        # the current multi-call cycle (triage: 3 calls, research: 8+).
-        # A background poll task (see `_poll_loop`) keeps it in sync with the
-        # dashboard continuously — not just between cycles — which is what
-        # makes mid-cycle interruption possible at all.
+
+        self.desired = DesiredStateResponse(unregistered=True)
         self.stop_event = asyncio.Event()
-        self.stop_event.set()  # start stopped, matches control_state default
+        self.stop_event.set()  # start stopped
+        self.interrupt_event = asyncio.Event()
+        self._last_seen_interrupt_token = 0
+
+        self.phase = Phase.STOPPED
+        self.applied_generation = 0
+        self.current_node: Optional[str] = None
+        self.iteration = 0
+        self.last_error: Optional[str] = None
+        # Set in run_loop; `_sync_from_desired` uses it to keep the pacer's
+        # target in sync with `desired.limit_tpm` on every poll tick — see
+        # control/limits.py's docstring for why this bridge exists.
+        self.harness: Optional[ModelHarness] = None
+
         self._poll_task: Optional[asyncio.Task] = None
         self._load_corpus()
 
@@ -72,7 +84,7 @@ class AgentWorker:
         if settings.task_description:
             return settings.task_description
         defaults = {"triage": "Processing dispute letters", "assistant": "Customer Q&A (multi-turn)", "research": "Policy research (fan-out)"}
-        return defaults.get(self.control_state.agent, self.control_state.agent)
+        return defaults.get(settings.agent_type, settings.agent_type)
 
     def _load_corpus(self):
         letters_index_path = DATA_DIR / "letters_index.json"
@@ -87,77 +99,93 @@ class AgentWorker:
         else:
             self.policies = []
 
-    async def register(self) -> None:
-        """Register this agent with the dashboard on startup."""
-        url = f"{self.dashboard_url.rstrip('/')}/register"
-        payload = {
-            "user": self.user_id,
-            "team": self.team_id,
-            "display_name": self.display_name,
-            "task_description": self.task_description,
-            "agent": self.control_state.agent,
-            "mode": self.control_state.mode,
-            "state": "stopped",
-            "limit_tpm": settings.limit_tpm,
-        }
-        async with httpx.AsyncClient(timeout=3.0) as client:
-            try:
-                await client.post(url, json=payload)
-                print(f"[WORKER] Registered '{self.display_name}' ({self.user_id}) with dashboard.", flush=True)
-            except Exception as e:
-                print(f"[WORKER] Could not register with dashboard: {e}", flush=True)
-
-    async def poll_control(self) -> None:
-        """Poll dashboard for desired state, update local state, and keep
-        `stop_event` in sync so any in-flight model call sees the change
-        immediately (see `_sync_stop_event`)."""
-        url = f"{self.dashboard_url.rstrip('/')}/control/{self.user_id}"
-        async with httpx.AsyncClient(timeout=1.5) as client:
-            try:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    self.control_state = AgentControlState(**data)
-            except Exception:
-                # Dashboard not reachable or running standalone
-                pass
-        self._sync_stop_event()
-
-    def _sync_stop_event(self) -> None:
-        if self._is_running():
-            self.stop_event.clear()
-        else:
-            self.stop_event.set()
-
     def _is_running(self) -> bool:
-        return self.control_state.state == "running" and not self.control_state.unregistered
+        return self.desired.state == "running" and not self.desired.unregistered
 
-    async def _poll_loop(self) -> None:
-        """Runs concurrently with `run_loop`'s cycle execution — this is what
-        lets a Stop command interrupt a cycle already in progress instead of
-        only being noticed once the cycle finishes."""
+    async def _on_telemetry_event(self, event: TelemetryEvent) -> None:
+        """Registered as a telemetry listener — this is how `current_node`/
+        `iteration`/`last_error` get populated for the heartbeat without
+        threading extra bookkeeping through every agent call site.
+        """
+        self.current_node = event.node
+        self.iteration += 1
+        self.last_error = None if event.status == 200 else f"{event.node}: status {event.status}"
+
+    def _sync_from_desired(self, desired: DesiredStateResponse) -> None:
+        """Called every poll tick. This is the one place desired state is
+        translated into stop_event/interrupt_event/phase — see
+        docs/phase-1-5-implementation-plan.md §1.4.
+        """
+        self.desired = desired
+        self.applied_generation = desired.generation
+
+        running = self._is_running()
+        if running:
+            if self.stop_event.is_set():
+                self.stop_event.clear()
+            if self.phase in (Phase.STOPPED, Phase.STARTING):
+                self.phase = Phase.RUNNING
+        else:
+            if not self.stop_event.is_set():
+                # Just transitioned running -> stopped. If a cycle is
+                # currently in flight, it's draining; the main loop will
+                # flip this to STOPPED once that cycle actually exits.
+                if self.phase == Phase.RUNNING:
+                    self.phase = Phase.DRAINING
+                self.stop_event.set()
+            elif self.phase == Phase.RUNNING:
+                self.phase = Phase.STOPPED
+
+        if desired.interrupt_token != self._last_seen_interrupt_token:
+            self._last_seen_interrupt_token = desired.interrupt_token
+            self.interrupt_event.set()
+
+        if (
+            self.harness is not None
+            and self.harness.pacer is not None
+            and desired.limit_tpm is not None
+        ):
+            self.harness.pacer.update_target(desired.limit_tpm * settings.paced_target_ratio)
+
+    async def _poll_and_heartbeat_loop(self) -> None:
+        """Runs concurrently with the main cycle loop — this is what lets a
+        Stop or Interrupt command take effect mid-cycle instead of only
+        being noticed once the current cycle finishes (Phase 0 fix
+        #0.3/#0.4, now talking to the v2 API).
+        """
         while True:
-            await self.poll_control()
+            desired = await self.control.get_desired()
+            self._sync_from_desired(desired)
+            await self.control.heartbeat(
+                applied_generation=self.applied_generation,
+                phase=self.phase.value,
+                current_node=self.current_node,
+                iteration=self.iteration,
+                last_error=self.last_error,
+                applied_interrupt_token=self._last_seen_interrupt_token,
+            )
             await asyncio.sleep(1.0)
 
     async def run_loop(self):
         print(f"[WORKER] Starting agent worker for user '{self.user_id}' (team '{self.team_id}')...", flush=True)
-        await self.register()
-        self._poll_task = asyncio.create_task(self._poll_loop())
+        self.phase = Phase.STARTING
+        await self.control.register(agent=settings.agent_type, mode=settings.agent_mode, managed=False)
+        telemetry.add_listener(self._on_telemetry_event)
+        self._poll_task = asyncio.create_task(self._poll_and_heartbeat_loop())
 
         step_idx = 0
         assistant_turn = 0
         assistant_instance: Optional[AssistantAgent] = None
 
-        # Persistent harness — keeps the token bucket alive across cycles
-        current_agent_type = self.control_state.agent
-        current_mode = self.control_state.mode
-        harness = ModelHarness(
+        current_agent_type = settings.agent_type
+        current_mode = settings.agent_mode
+        self.harness = ModelHarness(
             user_id=self.user_id,
             team_id=self.team_id,
             agent_name=current_agent_type,
             mode=current_mode,
             stop_event=self.stop_event,
+            interrupt_event=self.interrupt_event,
         )
 
         was_running = False
@@ -167,42 +195,37 @@ class AgentWorker:
                 is_running = self._is_running()
 
                 if not is_running:
+                    if self.phase != Phase.STOPPED:
+                        self.phase = Phase.STOPPED
                     was_running = False
                     await asyncio.sleep(1.0)
                     continue
 
-                # Just transitioned from stopped → running: refill the bucket so
-                # the agent doesn't wait up to 60s for tokens to accumulate.
                 if not was_running:
-                    if harness.pacer is not None:
-                        harness.pacer.tokens = harness.pacer.capacity
+                    if self.harness.pacer is not None:
+                        self.harness.pacer.tokens = self.harness.pacer.capacity
                     was_running = True
+                    self.phase = Phase.RUNNING
 
-                agent_type = self.control_state.agent
-                mode = self.control_state.mode
+                agent_type = self.desired.agent
+                mode = self.desired.mode
 
-                # Recreate harness only when agent type or mode changes
                 if agent_type != current_agent_type or mode != current_mode:
                     current_agent_type = agent_type
                     current_mode = mode
-                    harness = ModelHarness(
+                    self.harness = ModelHarness(
                         user_id=self.user_id,
                         team_id=self.team_id,
                         agent_name=agent_type,
                         mode=mode,
                         stop_event=self.stop_event,
+                        interrupt_event=self.interrupt_event,
                     )
                     assistant_instance = None
 
-                # Keep pacer target in sync with dashboard limit
-                if harness.pacer is not None:
-                    harness.pacer.update_target(
-                        self.control_state.limit_tpm * settings.paced_target_ratio
-                    )
-
                 try:
                     if agent_type == "triage":
-                        triage = TriageAgent(harness=harness)
+                        triage = TriageAgent(harness=self.harness)
                         letter_item = self.letters[step_idx % len(self.letters)] if self.letters else {"id": "LET-001"}
                         letter_path = DATA_DIR / "letters" / f"letter_{int(letter_item['id'].replace('LET-', '')):04d}.txt"
                         letter_text = letter_path.read_text(encoding="utf-8") if letter_path.exists() else "Dispute sample text"
@@ -219,13 +242,13 @@ class AgentWorker:
                         ]
                         q = sample_queries[step_idx % len(sample_queries)]
                         print(f"[{self.user_id}][RESEARCH] '{q[:60]}...' in {mode} mode", flush=True)
-                        research = ResearchAgent(harness=harness)
+                        research = ResearchAgent(harness=self.harness)
                         await research.run(query=q)
                         step_idx += 1
 
                     elif agent_type == "assistant":
                         if assistant_instance is None or assistant_turn >= 15:
-                            assistant_instance = AssistantAgent(harness=harness)
+                            assistant_instance = AssistantAgent(harness=self.harness)
                             assistant_turn = 0
                         sample_chat_questions = [
                             "Can you explain the difference between tier-1 and tier-2 dispute thresholds?",
@@ -246,6 +269,12 @@ class AgentWorker:
                     # through. Don't advance step counters for a cycle that
                     # didn't complete, and don't log it as an error.
                     print(f"[{self.user_id}] Stopped mid-cycle.", flush=True)
+                    self.phase = Phase.STOPPED
+                except WorkerInterrupted:
+                    # An Interrupt aborted the current call. The cycle is
+                    # abandoned, but — unlike Stop — the worker keeps
+                    # running and starts its next cycle normally.
+                    print(f"[{self.user_id}] Interrupted mid-call — continuing.", flush=True)
                 except Exception as e:
                     print(f"[{self.user_id}] Cycle exception: {e}", flush=True)
 

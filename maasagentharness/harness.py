@@ -53,6 +53,24 @@ class WorkerStopped(Exception):
     pass
 
 
+class WorkerInterrupted(Exception):
+    """Raised when an Interrupt command (via `interrupt_event`) cancels the
+    current in-flight call. Unlike WorkerStopped, this is single-shot and
+    does NOT halt the worker — the next cycle proceeds normally. See
+    docs/phase-1-5-implementation-plan.md's Phase 1 "Interrupt" note: the
+    control plane and worker are different processes talking over HTTP, so
+    this can't be a real asyncio Task.cancel() from the API side — instead
+    the worker polls for an incrementing `interrupt_token` and raises this
+    itself, bounded by the poll interval (~1s) rather than instant.
+
+    Known limitation: if no call is in-flight when an interrupt is
+    requested, the event stays set and aborts the *next* call issued
+    shortly after instead of silently no-opping. Acceptable for Phase 1;
+    revisit if this proves surprising in practice.
+    """
+    pass
+
+
 class ModelHarness:
     """Shared harness for LLM interaction, token-bucket pacing, retry policy, and telemetry."""
 
@@ -64,6 +82,7 @@ class ModelHarness:
         mode: str = "naive",
         pacer: Optional[TokenBucket] = None,
         stop_event: Optional[asyncio.Event] = None,
+        interrupt_event: Optional[asyncio.Event] = None,
     ):
         self.user_id = user_id or settings.user_id
         self.team_id = team_id or settings.team_id
@@ -76,6 +95,10 @@ class ModelHarness:
         # Checked before every pacer wait, before every model call, and during
         # every retry/backoff sleep. None means "never stops" (e.g. the probe).
         self.stop_event = stop_event
+        # Checked at the same points as stop_event, EXCEPT retry/backoff
+        # sleeps — see WorkerInterrupted's docstring. Single-shot: consuming
+        # it clears it, so only the call in flight when it fired is aborted.
+        self.interrupt_event = interrupt_event
 
     def _should_stop(self) -> bool:
         return self.stop_event is not None and self.stop_event.is_set()
@@ -83,6 +106,11 @@ class ModelHarness:
     def _raise_if_stopped(self) -> None:
         if self._should_stop():
             raise WorkerStopped(f"{self.agent_name}/{self.user_id} stopped")
+
+    def _raise_if_interrupted(self) -> None:
+        if self.interrupt_event is not None and self.interrupt_event.is_set():
+            self.interrupt_event.clear()  # single-shot — don't abort the NEXT call too
+            raise WorkerInterrupted(f"{self.agent_name}/{self.user_id} interrupted")
 
     async def _interruptible_sleep(self, seconds: float) -> None:
         """Sleep for `seconds`, but return immediately if `stop_event` fires —
@@ -122,6 +150,7 @@ class ModelHarness:
             max_attempts = 1 if self.mode == "runaway" else 3
 
         self._raise_if_stopped()
+        self._raise_if_interrupted()
 
         # 1. Pacing check — interruptible: a Stop click during a pacing wait
         # returns here without having consumed bucket capacity.
@@ -132,6 +161,7 @@ class ModelHarness:
         attempt = 0
         while attempt < max_attempts:
             self._raise_if_stopped()
+            self._raise_if_interrupted()
             attempt += 1
             start_time = time.monotonic()
             status = 200
@@ -238,6 +268,7 @@ class ModelHarness:
     ) -> AsyncIterator[str]:
         """Execute streamed LLM call with token accounting and telemetry."""
         self._raise_if_stopped()
+        self._raise_if_interrupted()
 
         if self.mode == "paced" and self.pacer is not None:
             await self.pacer.acquire(estimated_input_tokens, stop_event=self.stop_event)

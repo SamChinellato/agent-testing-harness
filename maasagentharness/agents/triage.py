@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 from pydantic import BaseModel, Field
 
-from maasagentharness.harness import ModelHarness, RateLimitExceeded, WorkerStopped
+from maasagentharness.harness import ModelHarness, RateLimitExceeded, WorkerStopped, WorkerInterrupted
 
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -71,7 +71,7 @@ Respond with ONLY the exact category name."""
                 category = response.strip()
             except RateLimitExceeded:
                 category = "THROTTLED_429"
-            except WorkerStopped:
+            except (WorkerStopped, WorkerInterrupted):
                 raise
             except Exception:
                 category = "CLASSIFICATION_FAILED"
@@ -111,7 +111,7 @@ Output JSON only."""
                 )
             except RateLimitExceeded:
                 fields = DisputeFields(category=state.category, status="throttled")
-            except WorkerStopped:
+            except (WorkerStopped, WorkerInterrupted):
                 raise
             except Exception:
                 fields = DisputeFields(category=state.category, status="failed")
@@ -137,7 +137,7 @@ Provide only the one-line summary."""
                 )
             except RateLimitExceeded:
                 summary = "[Summary unavailable: Throttled (429)]"
-            except WorkerStopped:
+            except (WorkerStopped, WorkerInterrupted):
                 raise
             except Exception as e:
                 summary = f"[Summary failed: {str(e)}]"

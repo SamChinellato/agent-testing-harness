@@ -1,36 +1,40 @@
-"""Dashboard API route tests.
+"""Legacy v1 dashboard route tests.
 
-Phase 0 fix #0.14: converted from an `async def` script invoked only via
-`__main__` (never run under pytest, nothing asserted in CI) to real
-pytest-asyncio tests. Also covers the Phase 0 regressions directly:
-unknown-worker-defaults-to-stopped (#0.1) and typed/validated control
-patches (#0.2).
+These exercise /register, /control/{id}, /act, /reset, /limits, /events —
+the routes the currently-shipped React dashboard still calls. Phase 1 made
+them delegate to the same SQLite-backed WorkerStore the new /api/workers
+routes use (see maasagentharness/dashboard/app.py's module docstring on the
+"Legacy v1 control API" section) instead of in-memory dicts.
+
+httpx.ASGITransport does not run FastAPI's lifespan, so these fixtures wire
+up `app.state.worker_store` directly rather than relying on `_lifespan`.
 """
 import httpx
 import pytest
 
+from maasagentharness.control.limits import team_limits, worker_limits
+from maasagentharness.control.store import WorkerStore
+from maasagentharness.control.supervisor import Supervisor
 from maasagentharness.dashboard import app as dashboard_app
 
 
 @pytest.fixture
-def _reset_state():
-    """Each test gets a clean slate — module-level dicts persist across tests otherwise."""
-    dashboard_app.control_states.clear()
-    dashboard_app.agent_registry.clear()
-    dashboard_app.team_limits.clear()
-    dashboard_app.events_buffer.clear()
-    yield
-    dashboard_app.control_states.clear()
-    dashboard_app.agent_registry.clear()
-    dashboard_app.team_limits.clear()
+async def client(tmp_path):
+    store = WorkerStore(str(tmp_path / "test.db"))
+    await store.connect()
+    dashboard_app.app.state.worker_store = store
+    dashboard_app.app.state.supervisor = Supervisor(store)
+
+    team_limits.clear()
+    worker_limits.clear()
+    dashboard_app.registered_mode_defaults.clear()
     dashboard_app.events_buffer.clear()
 
-
-@pytest.fixture
-async def client(_reset_state):
     transport = httpx.ASGITransport(app=dashboard_app.app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
         yield c
+
+    await store.close()
 
 
 async def test_spa_route_serves_something(client):
@@ -81,6 +85,21 @@ async def test_control_patch_does_not_reset_other_fields(client):
     assert body["state"] == "running"
 
 
+async def test_control_patch_persists_across_the_store(client):
+    """Phase 1 fix for finding #6 — control state now lives in WorkerStore,
+    not a module dict, so it round-trips through a real GET after a POST
+    even though nothing but the store connects the two requests."""
+    await client.post("/register", json={"user": "user-a", "team": "team-alpha"})
+    await client.post("/control/user-a", json={"state": "running", "mode": "paced"})
+    resp = await client.get("/control/user-a")
+    body = resp.json()
+    assert body["state"] == "running"
+    assert body["mode"] == "paced"
+    # Bonus fields Phase 1 added, additive — the shipped UI ignores these.
+    assert "generation" in body
+    assert "status" in body
+
+
 async def test_act_1_and_act_2(client):
     await client.post("/register", json={"user": "user-a", "team": "team-alpha"})
     await client.post("/register", json={"user": "user-b", "team": "team-alpha"})
@@ -93,10 +112,22 @@ async def test_act_1_and_act_2(client):
     assert resp.json()["control"]["user-a"]["state"] == "running"
 
 
+async def test_reset_restores_registered_mode(client):
+    await client.post("/register", json={"user": "user-a", "team": "team-alpha", "mode": "paced"})
+    await client.post("/control/user-a", json={"state": "running", "mode": "runaway"})
+    resp = await client.post("/reset")
+    assert resp.status_code == 200
+    body = resp.json()["control"]["user-a"]
+    assert body["state"] == "stopped"
+    assert body["mode"] == "paced"  # restored, not left as "runaway"
+
+
 async def test_limits_update(client):
     await client.post("/register", json={"user": "user-a", "team": "team-alpha"})
     resp = await client.post("/limits/team-alpha", json={"limit_tpm": 4000})
     assert resp.status_code == 200
+    assert resp.json()["limit_tpm"] == 4000
+    resp = await client.get("/control/user-a")
     assert resp.json()["limit_tpm"] == 4000
 
 
