@@ -22,6 +22,18 @@ agent = "maasagentharness.runner:main"
 dashboard = "maasagentharness.dashboard.app:main"
 probe = "maasagentharness.probe:main"
 
+[dependency-groups]
+# Phase 0 fix #0.14: tests existed but ran under nothing — no pytest or
+# pytest-asyncio dependency, so `pytest tests/` collected `async def test_*`
+# functions, never awaited them, and asserted nothing.
+dev = [
+    "pytest>=8.0.0",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+
 [tool.hatch.build.targets.wheel]
 packages = ["maasagentharness"]
 

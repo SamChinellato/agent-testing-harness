@@ -1,7 +1,10 @@
-import asyncio
-import os
-import sys
-from maasagentharness.config import settings
+"""Component smoke tests — construction and wiring, not network calls.
+
+Phase 0 fix #0.14: previously `async def test_components()` was only ever
+invoked from `__main__`; under plain pytest it was collected and silently
+never awaited, so this file asserted nothing in CI. Converted to real
+pytest `async def test_*` functions with assertions pytest-asyncio can run.
+"""
 from maasagentharness.pacer import TokenBucket
 from maasagentharness.harness import ModelHarness
 from maasagentharness.agents.research import ResearchAgent
@@ -9,31 +12,22 @@ from maasagentharness.agents.triage import TriageAgent
 from maasagentharness.agents.assistant import AssistantAgent
 
 
-async def test_components():
-    print("Testing maasagentharness components locally...")
-    
-    # 1. Test TokenBucket
+async def test_token_bucket_acquire():
     bucket = TokenBucket(target_tpm=1800)
-    print(f"TokenBucket initialized: capacity={bucket.capacity}, rate={bucket.refill_rate:.2f}/s")
+    assert bucket.capacity == 1800
+    assert bucket.refill_rate == 30.0
     await bucket.acquire(100)
-    print("TokenBucket acquire completed successfully.")
+    assert bucket.tokens == 1700
 
-    # 2. Test Harness init
+
+def test_harness_init():
     harness = ModelHarness(user_id="user-a", team_id="team-alpha", agent_name="triage", mode="paced")
-    print("ModelHarness initialized successfully.")
-
-    # 3. Test Graph compilations
-    triage = TriageAgent(harness=harness)
-    print("TriageAgent graph compiled successfully.")
-
-    research = ResearchAgent(harness=harness)
-    print("ResearchAgent graph compiled successfully.")
-
-    assistant = AssistantAgent(harness=harness)
-    print("AssistantAgent initialized successfully.")
-
-    print("All component tests passed!")
+    assert harness.pacer is not None
+    assert harness.mode == "paced"
 
 
-if __name__ == "__main__":
-    asyncio.run(test_components())
+def test_agent_graphs_compile():
+    harness = ModelHarness(user_id="user-a", team_id="team-alpha", agent_name="triage", mode="paced")
+    assert TriageAgent(harness=harness).graph is not None
+    assert ResearchAgent(harness=harness).graph is not None
+    assert AssistantAgent(harness=harness) is not None

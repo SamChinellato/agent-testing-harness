@@ -7,7 +7,7 @@ from maasagentharness.config import settings
 from maasagentharness.harness import ModelHarness
 
 
-async def main():
+async def _main():
     print(f"[PROBE] Starting probe against {settings.maas_host}{settings.model_path} with model {settings.model_name}...")
     harness = ModelHarness(agent_name="probe", mode="runaway")
     
@@ -36,5 +36,16 @@ async def main():
     print(f"\n[PROBE SUMMARY] Completed 90s probe: {request_count} sent, {throttled_count} throttled.")
 
 
+def main():
+    """Sync entry point for `uv run probe` — Phase 0 fix #0.7.
+
+    The previous entry point pointed straight at the `async def main`
+    coroutine function; calling it just built a coroutine object and returned,
+    so `uv run probe` printed nothing and exited immediately without sending
+    a single request.
+    """
+    asyncio.run(_main())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

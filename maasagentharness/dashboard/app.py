@@ -2,25 +2,32 @@ import asyncio
 import json
 import os
 import time
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 from maasagentharness.telemetry import TelemetryEvent
 
 _shutdown_event = asyncio.Event()
 
-app = FastAPI(title="MaaS Rate-Limit Demo Dashboard API")
 
-
-@app.on_event("shutdown")
-async def _on_shutdown():
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    yield
+    # Phase 0 fix #0.13: @app.on_event("shutdown") is deprecated in current
+    # FastAPI; a lifespan context manager is the supported replacement and
+    # does the same job — flip the event so /events/stream's wait races exit
+    # promptly instead of hanging until the client disconnects.
     _shutdown_event.set()
+
+
+app = FastAPI(title="MaaS Rate-Limit Demo Dashboard API", lifespan=_lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,8 +37,14 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Real-time retention window for the live chart/log; see _prune_events below.
+# Phase 0 fix #0.12: this constant existed before but was never actually
+# applied — the only pruning that happened was a hard count-based cap.
 WINDOW_SECONDS = 900
+BUCKET_SECONDS = 5
+
 events_buffer: List[TelemetryEvent] = []
+_next_seq = 0  # Phase 0 fix #0.9 — monotonically increasing event id.
 
 # Dynamically populated as agents register
 control_states: Dict[str, Any] = {}
@@ -53,6 +66,25 @@ class AgentRegistration(BaseModel):
     limit_tpm: int = 2000
 
 
+class ControlPatch(BaseModel):
+    """A partial update to a worker's control state.
+
+    Phase 0 fix #0.2: the previous `POST /control/{user_id}` took a bare
+    `Dict[str, Any]`, accepted arbitrary extra keys, and — for an unknown
+    user — fabricated a bare `{"user":…, "team": "team-alpha"}` record that
+    the next `AgentControlState(**data)` on the agent side would silently
+    fill out with defaults (`agent=triage, mode=naive, state=running`),
+    stomping whatever that agent actually was. `extra="forbid"` plus 404 on
+    an unknown user (see `update_control`) close both holes.
+    """
+    model_config = ConfigDict(extra="forbid")
+
+    state: Optional[Literal["running", "stopped"]] = None
+    agent: Optional[str] = None
+    mode: Optional[Literal["naive", "paced", "runaway"]] = None
+    limit_tpm: Optional[int] = None
+
+
 @app.post("/register")
 async def register_agent(reg: AgentRegistration):
     """Called by agent on startup to register itself with the dashboard."""
@@ -64,6 +96,7 @@ async def register_agent(reg: AgentRegistration):
             "agent": reg.agent,
             "mode": reg.mode,
             "limit_tpm": reg.limit_tpm,
+            "unregistered": False,
         }
     agent_registry[reg.user] = {
         "user": reg.user,
@@ -78,15 +111,38 @@ async def register_agent(reg: AgentRegistration):
     return {"status": "registered", "user": reg.user}
 
 
+def _prune_events() -> None:
+    """Enforce the documented 15-minute retention window, plus a hard count
+    cap as a memory backstop. Phase 0 fix #0.12 — previously `WINDOW_SECONDS`
+    was computed and never used; the only real limit was "buffer > 2000 ->
+    keep last 1000", which does not match docs/dashboard.md's claim of a
+    15-minute window. This is O(n) per call, which is fine at the event
+    volumes Phase 0 targets; Phase 4 replaces this buffer with a real
+    metrics store.
+    """
+    global events_buffer
+    now = time.time()
+    cutoff = now - WINDOW_SECONDS
+    kept = []
+    for ev in events_buffer:
+        try:
+            ev_ts = datetime.fromisoformat(ev.ts).timestamp()
+        except Exception:
+            ev_ts = now
+        if ev_ts >= cutoff:
+            kept.append(ev)
+    events_buffer = kept
+    if len(events_buffer) > 2000:
+        del events_buffer[: len(events_buffer) - 1000]
+
+
 @app.post("/events")
 async def receive_event(event: TelemetryEvent):
+    global _next_seq
+    _next_seq += 1
+    event.seq = _next_seq
     events_buffer.append(event)
-    now = time.time()
-    # Prune old events outside 15 min window if buffer gets large
-    if len(events_buffer) > 2000:
-        cutoff = now - WINDOW_SECONDS
-        # keep last 1000 events
-        del events_buffer[: len(events_buffer) - 1000]
+    _prune_events()
     return {"status": "ok"}
 
 
@@ -94,14 +150,31 @@ async def receive_event(event: TelemetryEvent):
 async def get_control(user_id: str):
     if user_id in control_states:
         return control_states[user_id]
-    return {"user": user_id, "team": "team-alpha", "state": "running", "agent": "triage", "mode": "naive", "limit_tpm": 2000}
+    # Phase 0 fix #0.1: this used to return state="running" for ANY unknown
+    # user_id — so restarting the dashboard, or starting an agent before the
+    # dashboard is up, meant that agent silently kept calling the model with
+    # no card in the UI to stop it. Unknown now means stopped, with an
+    # explicit `unregistered` flag so the agent (and later the UI) can tell
+    # "never registered" apart from "registered and stopped".
+    return {
+        "user": user_id,
+        "team": "unknown",
+        "state": "stopped",
+        "agent": "triage",
+        "mode": "naive",
+        "limit_tpm": 2000,
+        "unregistered": True,
+    }
 
 
 @app.post("/control/{user_id}")
-async def update_control(user_id: str, payload: Dict[str, Any]):
+async def update_control(user_id: str, patch: ControlPatch):
     if user_id not in control_states:
-        control_states[user_id] = {"user": user_id, "team": "team-alpha"}
-    control_states[user_id].update(payload)
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown worker '{user_id}' — it must call POST /register before its control state can be changed.",
+        )
+    control_states[user_id].update(patch.model_dump(exclude_none=True))
     return control_states[user_id]
 
 
@@ -161,9 +234,9 @@ def calculate_metrics():
 
     # Time series: per-user token buckets (5s intervals, last 60s)
     buckets: Dict[int, Dict[str, Any]] = {}
-    current_bucket_idx = int(now // 5)
+    current_bucket_idx = int(now // BUCKET_SECONDS)
     for b in range(current_bucket_idx - 11, current_bucket_idx + 1):
-        bucket: Dict[str, Any] = {"time": datetime.fromtimestamp(b * 5).strftime("%H:%M:%S")}
+        bucket: Dict[str, Any] = {"time": datetime.fromtimestamp(b * BUCKET_SECONDS).strftime("%H:%M:%S")}
         for u in registered_users:
             bucket[f"{u}_tokens"] = 0
             bucket[f"{u}_429"] = 0
@@ -186,14 +259,29 @@ def calculate_metrics():
                 user_metrics[user]["tpm"] += tokens
                 if ev.status == 429:
                     user_metrics[user]["status_429_count"] += 1
-            b_idx = int(ev_ts // 5)
+            b_idx = int(ev_ts // BUCKET_SECONDS)
             if b_idx in buckets:
                 tokens = ev.prompt_tokens + ev.completion_tokens
                 buckets[b_idx][f"{user}_tokens"] += tokens
                 if ev.status == 429:
                     buckets[b_idx][f"{user}_429"] += 1
 
-    chart_series = [buckets[k] for k in sorted(buckets.keys())]
+    # Phase 0 fix #0.10: buckets accumulate tokens over a BUCKET_SECONDS
+    # window, but `limit_tpm` (and the chart's reference line) are tokens
+    # PER MINUTE. Without this scaling the plotted line sits at ~1/12th of
+    # where it should, so it can never visibly cross the limit line — the
+    # entire point of the chart. Scale each bucket's token count up to its
+    # per-minute-equivalent rate so both series share units. `_429` counts
+    # are left as raw per-bucket counts — those are already dimensionless.
+    scale = 60.0 / BUCKET_SECONDS
+    chart_series = []
+    for k in sorted(buckets.keys()):
+        bucket = buckets[k]
+        scaled = dict(bucket)
+        for key in bucket:
+            if key.endswith("_tokens"):
+                scaled[key] = bucket[key] * scale
+        chart_series.append(scaled)
 
     return {
         "user_metrics": user_metrics,
@@ -238,16 +326,37 @@ async def events_stream(request: Request):
 
 
 # Serve static built frontend files if build exists
-FRONTEND_DIST = Path(__file__).parent.parent.parent / "dashboard" / "frontend" / "dist"
+FRONTEND_DIST = (Path(__file__).parent.parent.parent / "dashboard" / "frontend" / "dist").resolve()
+
+_NOT_BUILT_HTML = """<!doctype html>
+<html><head><title>Dashboard not built</title></head>
+<body style="font-family: system-ui; max-width: 640px; margin: 80px auto; line-height: 1.5;">
+<h1>Frontend not built</h1>
+<p>The dashboard API is running, but <code>dashboard/frontend/dist/</code> does not exist yet.</p>
+<p>Build it with:</p>
+<pre style="background:#f4f4f4; padding: 12px; border-radius: 4px;">cd dashboard/frontend &amp;&amp; npm install &amp;&amp; npm run build</pre>
+<p>Then reload this page.</p>
+</body></html>"""
+
 if FRONTEND_DIST.exists():
     app.mount("/assets", StaticFiles(directory=str(FRONTEND_DIST / "assets")), name="assets")
 
-    @app.get("/{full_path:path}")
-    async def serve_spa(full_path: str):
-        file_path = FRONTEND_DIST / full_path
-        if file_path.exists() and file_path.is_file():
-            return FileResponse(file_path)
-        return FileResponse(FRONTEND_DIST / "index.html")
+
+# Phase 0 fix #0.11 / #0.19: this route is now ALWAYS registered (previously
+# it was only added `if FRONTEND_DIST.exists()`, so a missing build meant a
+# bare, unexplained 404 on every route). It also contains any requested path
+# to FRONTEND_DIST — the previous version did `FRONTEND_DIST / full_path`
+# with no check that the resolved path was still inside FRONTEND_DIST, which
+# is a path-traversal hole.
+@app.get("/{full_path:path}")
+async def serve_spa(full_path: str):
+    if not FRONTEND_DIST.exists():
+        return HTMLResponse(_NOT_BUILT_HTML, status_code=200)
+
+    requested = (FRONTEND_DIST / full_path).resolve()
+    if requested.is_relative_to(FRONTEND_DIST) and requested.is_file():
+        return FileResponse(requested)
+    return FileResponse(FRONTEND_DIST / "index.html")
 
 
 def main():

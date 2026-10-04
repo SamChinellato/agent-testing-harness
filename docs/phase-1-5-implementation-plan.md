@@ -1,0 +1,533 @@
+# Phase 1–5 — Implementation Plan
+
+**Status:** draft — ready to start after [phase-0-hotfixes.md](phase-0-hotfixes.md)
+**Parent:** [redesign-spec.md](redesign-spec.md) §4, §6
+**Purpose:** this is the actionable, file-by-file companion to the architecture in
+`redesign-spec.md` §4. That document explains *why*; this one specifies *what to build*: concrete
+schemas, API contracts, module layout, and a task breakdown per phase, so each phase can be picked
+up and implemented without re-deriving the design.
+
+Each phase is independently shippable and independently useful — you don't need Phase 3 to benefit
+from Phase 1. Land them in order; each one's data model is a dependency of the next.
+
+---
+
+## Phase 1 — Control plane v2
+
+**Delivers:** real start/stop, real liveness, survives a dashboard restart. Kills redesign-spec.md
+§2.1 entirely (findings #1, #2, #3, #4, #5, #6).
+
+### 1.1 New module: `maasagentharness/control/`
+
+```
+maasagentharness/control/
+├── __init__.py
+├── store.py          # SQLite-backed state store
+├── models.py          # WorkerRecord, Phase, DesiredPatch — typed, extra="forbid"
+├── supervisor.py       # spawns/signals managed worker processes
+└── api.py              # FastAPI router: mounted at /api/workers in dashboard/app.py
+```
+
+### 1.2 Schema (SQLite — one file, `harness_state.db`, WAL mode)
+
+```sql
+CREATE TABLE workers (
+    worker_id TEXT PRIMARY KEY,
+    team TEXT NOT NULL,
+    display_name TEXT NOT NULL,
+    task_description TEXT NOT NULL DEFAULT '',
+    managed INTEGER NOT NULL DEFAULT 0,   -- 1 if this daemon spawned it
+    pid INTEGER,
+
+    -- desired (control-plane-owned)
+    desired_state TEXT NOT NULL DEFAULT 'stopped',   -- running | stopped
+    desired_agent TEXT NOT NULL DEFAULT 'triage',
+    desired_mode TEXT NOT NULL DEFAULT 'naive',
+    desired_budget_id TEXT,
+    generation INTEGER NOT NULL DEFAULT 0,
+
+    -- observed (worker-owned, written only via heartbeat)
+    phase TEXT NOT NULL DEFAULT 'stopped',   -- starting|running|draining|stopped|unknown|lost|errored
+    applied_generation INTEGER NOT NULL DEFAULT 0,
+    current_node TEXT,
+    iteration INTEGER NOT NULL DEFAULT 0,
+    last_error TEXT,
+    heartbeat_at REAL,                 -- unix epoch seconds, server-stamped
+    lease_expires_at REAL,
+
+    created_at REAL NOT NULL,
+    updated_at REAL NOT NULL
+);
+
+CREATE INDEX idx_workers_team ON workers(team);
+```
+
+`generation` and `applied_generation` are the whole mechanism: every desired-state write bumps
+`generation`; the worker echoes `applied_generation` on its next heartbeat. `applied_generation <
+generation` is exactly "pending" — no separate status field needed for that case.
+
+### 1.3 API contract (`maasagentharness/control/api.py`)
+
+| Method | Path | Body | Response | Notes |
+|---|---|---|---|---|
+| `POST` | `/api/workers` | `{worker_id, team, display_name, task_description, managed}` | `WorkerRecord` | Idempotent upsert — replaces `/register`. Re-registering an existing id is a no-op on desired state (don't reset a running worker's desired state just because it reconnected). |
+| `GET` | `/api/workers/{id}/desired` | — | `{state, agent, mode, budget_id, generation}` or `{state:"stopped", unregistered:true}` | Replaces `GET /control/{id}`. Polled by workers every 1s. |
+| `PATCH` | `/api/workers/{id}/desired` | `DesiredPatch` (`extra="forbid"`, all optional) | updated record, new `generation` | 404 on unknown id. This is the UI's Start/Stop/mode button. |
+| `POST` | `/api/workers/{id}/heartbeat` | `{applied_generation, phase, current_node, iteration, last_error}` | `{lease_expires_at}` | Called every 1s by the worker. Upserts `heartbeat_at`, extends the lease, and — this is the self-healing part — re-creates the worker record from scratch if it was somehow missing, so a dashboard restart doesn't orphan a running fleet. |
+| `POST` | `/api/workers/{id}/interrupt` | — | 202 | Cancels the worker's current in-flight call immediately (see 1.5). |
+| `POST` | `/api/workers/{id}/kill` | — | 202 or 409 | Managed workers only — `SIGTERM` then `SIGKILL` after `kill_timeout` (default 10s). 409 if `managed=false`. |
+| `GET` | `/api/workers` | — | `[WorkerRecord, ...]` | Fleet listing for the UI; derives `status` (`pending`/`lost`/`unknown`/phase) server-side so the UI never recomputes staleness from raw timestamps itself. |
+| `DELETE` | `/api/workers/{id}` | — | 204 | "Forget" — only when `phase in (stopped, lost)`. |
+
+**Status derivation** (done once, server-side, in `api.py`, not duplicated in the frontend):
+
+```python
+def derive_status(w: WorkerRecord, now: float) -> str:
+    if now > w.lease_expires_at:
+        return "lost"
+    if w.applied_generation < w.generation:
+        return "pending"
+    if now - w.heartbeat_at > HEARTBEAT_INTERVAL * 3:
+        return "unknown"
+    return w.phase
+```
+
+### 1.4 Worker side: `maasagentharness/runner.py` rewrite
+
+Replace `poll_control`/`register` with a `ControlClient`:
+
+```python
+class ControlClient:
+    async def register(self) -> WorkerRecord: ...
+    async def poll_desired(self) -> DesiredState: ...          # GET .../desired, every 1s
+    async def heartbeat(self, phase, current_node, iteration, applied_generation, last_error) -> None: ...
+```
+
+`AgentWorker` keeps the Phase 0 `stop_event` + background poll task design (that part of Phase 0
+is not thrown away — it's the mechanism Phase 1 builds on), but:
+- `_sync_stop_event` now compares against `desired.generation` vs the worker's own
+  `applied_generation`, and the worker bumps its local `applied_generation` only after it has
+  actually observed and acted on a new desired state — closing the gap where a command could be
+  "received" but not yet "applied".
+- Phase (`starting`/`running`/`draining`/`stopped`) is tracked locally and sent on every heartbeat.
+
+### 1.5 Three-phase stop
+
+| Action | New behavior |
+|---|---|
+| **Stop** | `PATCH .../desired {state: "stopped"}`. Worker sees it, enters `draining`, lets the current harness call/cycle finish (bounded by `graceful_stop`, default 30s — see §4.2 of the spec), then reports `phase: "stopped"`. |
+| **Interrupt** | `POST .../interrupt`. The daemon holds one `asyncio.Task` handle per managed worker's current call (for attached workers, this is a no-op the UI greys out — you can't cancel a process you don't control at the task level). Calling `.cancel()` on it aborts the in-flight `httpx` request immediately. The resulting partial result is tagged `interrupted: true` in telemetry and excluded from latency aggregates. |
+| **Kill** | `POST .../kill`. Managed only. `SIGTERM`, wait `kill_timeout`, `SIGKILL`. |
+
+### 1.6 Supervisor (`maasagentharness/control/supervisor.py`)
+
+For `managed: true` workers only:
+
+```python
+class Supervisor:
+    async def spawn(self, worker_id: str, env: dict) -> int: ...   # returns pid
+    async def signal(self, worker_id: str, sig: signal.Signals) -> None: ...
+    async def reap(self) -> None: ...   # periodic: clean up dead PIDs, mark phase=lost
+```
+
+Spawns via `asyncio.create_subprocess_exec(sys.executable, "-m", "maasagentharness.runner", env=…)`.
+The dashboard process becomes the parent of every managed worker — this is what makes **Start** and
+**Kill** real operations instead of hopeful dict writes.
+
+### 1.7 Migration / compatibility
+
+- Old `/register`, `/control/{id}`, `/events` routes stay mounted (thin shims calling the new store)
+  for one release, logging a deprecation warning, so a half-upgraded fleet doesn't silently break.
+- Phase 0's `AgentControlState` (`runner.py`) becomes `DesiredState` in `control/models.py` — same
+  shape, same field names, so the diff is additive.
+
+### 1.8 Task breakdown
+
+1. `control/models.py` — `WorkerRecord`, `DesiredPatch`, `Phase` enum.
+2. `control/store.py` — SQLite schema + CRUD, `upsert_heartbeat` (the self-healing re-create path).
+3. `control/api.py` — the 8 routes above, mounted in `dashboard/app.py`.
+4. `runner.py` — `ControlClient`, phase tracking, heartbeat loop.
+5. `control/supervisor.py` + a `POST /api/workers/{id}/spawn` route for `managed=true`.
+6. Compatibility shims for the 3 old routes.
+7. Tests: generation convergence, lease expiry → `lost`, self-healing re-register on heartbeat,
+   interrupt cancels within ~100ms (fake slow endpoint), kill actually terminates a spawned PID.
+
+---
+
+## Phase 2 — Budgets
+
+**Delivers:** one source of truth for rate limits, scoped, with a real UI editor. Kills
+redesign-spec.md §2.2 (findings #7, #8, #9, #10, #11).
+
+### 2.1 Schema addition
+
+```sql
+CREATE TABLE budgets (
+    budget_id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,              -- global | team | worker
+    scope_ref TEXT,                   -- team name or worker_id; NULL for global
+    tokens_per_minute INTEGER,
+    requests_per_minute INTEGER,
+    max_concurrency INTEGER,
+    headroom REAL NOT NULL DEFAULT 0.90,
+    enforcement TEXT NOT NULL DEFAULT 'client_bucket',  -- off | client_bucket | shadow
+    updated_at REAL NOT NULL
+);
+```
+
+`workers.desired_budget_id` (added in Phase 1's table, nullable) overrides team/global resolution
+for that one worker.
+
+### 2.2 Resolution (`control/budgets.py`)
+
+```python
+def resolve_budget(worker: WorkerRecord, budgets: list[Budget]) -> Budget:
+    """worker-scoped > team-scoped > global. Returns a default (enforcement=off)
+    if nothing matches, so a worker is never silently unbudgeted and unexplained."""
+```
+
+Effective enforced rate = `tokens_per_minute * headroom` — computed once here, returned alongside
+the nominal rate in every API response that mentions a budget, so the UI never has to recompute it
+and can never show a different number than what's enforced (redesign-spec.md finding #10).
+
+### 2.3 API
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/budgets` | All budgets, each with `effective_tokens_per_minute` precomputed. |
+| `PUT` | `/api/budgets/{id}` | Full replace — this is a form submission, not a live-sync field. |
+| `DELETE` | `/api/budgets/{id}` | Only if unreferenced by any worker's `desired_budget_id`. |
+| `GET` | `/api/workers/{id}/budget` | The *resolved* budget for this worker + which scope won. |
+
+`enforcement: "shadow"` — the worker's `TokenBucket` still runs the acquire logic and records how
+long it *would* have waited (`shadow_queue_wait_ms`) in its telemetry, but never actually awaits
+that sleep. Lets you see "this agent is 3× over budget" without altering the load being measured.
+
+### 2.4 Frontend — form-submit editor, not live-sync
+
+Replace `LimitEditor` (`App.tsx`) with a `BudgetEditor` that:
+- Loads the resolved budget once via `GET /api/workers/{id}/budget` on mount.
+- Holds a local draft (`useState`), **never overwritten by the SSE/WS stream** while mounted.
+- Shows a dirty indicator and explicit **Apply**/**Revert** buttons (this is Locust's `swarm`-slice
+  pattern — config is submitted, not synced).
+- On Apply: `PUT /api/budgets/{id}`, then re-fetch and reconcile.
+- Displays nominal vs. effective rate side by side, and which scope (`global`/`team`/`worker`) is
+  binding.
+
+### 2.5 Event annotation
+
+Every budget change is appended to the events table (Phase 4) as a synthetic `node="budget_change"`
+row, so a chart can mark *"limit changed 2000 → 4000 here"*.
+
+### 2.6 Task breakdown
+
+1. `control/budgets.py` — schema, `resolve_budget`, effective-rate computation.
+2. API routes above.
+3. `pacer.py` — add `shadow` mode: compute `would_have_waited_ms`, don't actually sleep.
+4. `BudgetEditor.tsx` replacing `LimitEditor`.
+5. Tests: scope precedence (worker > team > global), shadow mode never delays, effective rate
+   matches `tokens_per_minute * headroom` exactly.
+
+---
+
+## Phase 3 — Scenarios and executors
+
+**Delivers:** the actual missing capability — calibrated, declarative load generation. This is the
+highest-value phase; everything before it is fixing what's broken, this is adding what's missing.
+
+### 3.1 New module: `maasagentharness/scenario/`
+
+```
+maasagentharness/scenario/
+├── __init__.py
+├── schema.py        # pydantic models for the YAML — Scenario, Executor, Threshold
+├── loader.py        # YAML -> validated Scenario, with ${ENV_VAR} interpolation
+├── executors/
+│   ├── base.py       # Executor protocol: async def run(iteration_fn, stop_event) -> ExecutorStats
+│   ├── vus.py         # constant_vus, ramping_vus (closed model)
+│   └── arrival.py     # constant_arrival_rate, ramping_arrival_rate, poisson_arrival_rate (open model)
+└── sweep.py          # derived executor: synchronous floor -> throughput ceiling -> fill rates
+```
+
+### 3.2 Scenario schema (`scenario/schema.py`)
+
+```python
+class Stage(BaseModel):
+    target: int
+    duration: str   # "2m", "30s" — parsed with a duration validator
+
+class ExecutorConfig(BaseModel):
+    kind: Literal["constant_vus", "ramping_vus", "constant_arrival_rate",
+                   "ramping_arrival_rate", "poisson_arrival_rate", "sweep"]
+    rate: Optional[float] = None          # iterations/min, for *_arrival_rate
+    vus: Optional[int] = None             # for constant_vus
+    stages: Optional[List[Stage]] = None  # for ramping_*
+    max_vus: Optional[int] = None         # cap on open-model concurrency
+    duration: Optional[str] = None
+
+class ScenarioConfig(BaseModel):
+    agent: Literal["triage", "research", "assistant"]
+    executor: ExecutorConfig
+    budget: Optional[str] = None          # budget_id, or inline Budget
+    graceful_stop: str = "30s"
+    start_time: str = "0s"
+
+class RunConfig(BaseModel):
+    run: str
+    endpoint: Dict[str, str]
+    budgets: List[BudgetConfig] = []
+    scenarios: Dict[str, ScenarioConfig]
+    thresholds: List[str] = []            # e.g. "p95(total_latency_ms) < 8000"
+```
+
+### 3.3 Executor contract (`executors/base.py`)
+
+```python
+class ExecutorStats(BaseModel):
+    iterations_started: int
+    iterations_completed: int
+    iterations_dropped: int   # open-model only — couldn't start on schedule. THE key metric.
+
+class Executor(Protocol):
+    async def run(
+        self,
+        iteration_fn: Callable[[], Awaitable[None]],
+        stop_event: asyncio.Event,
+        duration_s: float,
+    ) -> ExecutorStats: ...
+```
+
+- **`constant_vus`** — N tasks, each loops `await iteration_fn()` back-to-back. This *is* the
+  current `runner.py` behavior with N=1; generalizing it to N is the whole fix.
+- **`ramping_vus`** — adjusts N on a schedule by spawning/cancelling tasks at each stage boundary.
+- **`constant_arrival_rate`** — a scheduler loop fires `asyncio.create_task(iteration_fn())` on a
+  fixed-interval clock (`rate` iterations/min) regardless of how long previous iterations take,
+  capped at `max_vus` concurrent in-flight; exceeding the cap counts as a **dropped iteration**.
+  This is the open-model executor — the one that exposes saturation instead of hiding it.
+- **`ramping_arrival_rate`** — same scheduler, rate interpolated across `stages`.
+- **`poisson_arrival_rate`** — same scheduler, inter-arrival times drawn from `Exponential(1/rate)`
+  instead of fixed spacing (GuideLLM-style bursty arrivals).
+- **`sweep`** (`sweep.py`) — not a primitive executor; it runs `constant_arrival_rate` three times
+  in sequence: (1) `rate=1` as a synchronous latency floor, (2) a short burst at a very high rate to
+  find the throughput ceiling (first rate where `iterations_dropped > 0` or a threshold breaches),
+  (3) 3–5 intermediate rates between floor and ceiling. Replaces `probe.py` with a principled
+  version of the same idea.
+
+### 3.4 Wiring into the worker
+
+`AgentWorker.run_loop` is replaced by `AgentWorker.run_scenario(scenario: ScenarioConfig)`:
+`iteration_fn` becomes a closure running exactly one triage/research/assistant cycle (reusing the
+Phase 0 `WorkerStopped`-aware harness unchanged — the executor layer sits *above* the harness, not
+inside it). The executor's `stop_event` is the same one Phase 0/1 already thread through.
+
+### 3.5 Runner CLI
+
+```bash
+uv run harness run scenario.yaml                 # runs it
+uv run harness run scenario.yaml --dry-run        # validates + prints the resolved plan, no calls
+```
+
+Retires `/act/1` and `/act/2` (`dashboard/app.py`) — replaced by the UI's "launch scenario" action
+hitting `POST /api/runs {scenario_path, overrides}`, which spawns the worker set the scenario names
+via the Phase 1 supervisor.
+
+### 3.6 Task breakdown
+
+1. `scenario/schema.py` + `loader.py` (incl. `${ENV_VAR}` interpolation, duration parsing).
+2. `executors/vus.py` (constant + ramping — closed model, simplest).
+3. `executors/arrival.py` (constant + ramping + poisson — open model, with drop accounting).
+4. `sweep.py` on top of `arrival.py`.
+5. `AgentWorker.run_scenario`, retiring the hardcoded per-mode `sleep()` cadence.
+6. `POST /api/runs` + CLI entry point; retire `/act/{1,2}`.
+7. Tests: dropped-iteration counting under an artificially slow fake endpoint; ramping_vus hits
+   each stage's target concurrency; sweep finds a ceiling against a fake endpoint with a known
+   breaking point; threshold parser.
+
+---
+
+## Phase 4 — Metrics v2
+
+**Delivers:** the LLM-relevant metrics (TTFT, ITL, percentiles) and run artifacts that make two runs
+comparable. Also fixes redesign-spec.md finding #15 (naive local timestamps) and #24 (per-request
+`httpx.AsyncClient`).
+
+### 4.1 New module: `maasagentharness/metrics/`
+
+```
+maasagentharness/metrics/
+├── __init__.py
+├── record.py        # RequestRecord — the atom, written once, never mutated
+├── histogram.py      # streaming percentile estimator (t-digest)
+├── store.py          # in-memory ring buffer (live) + Parquet writer (artifact)
+├── prometheus.py      # GET /metrics renderer
+└── artifact.py        # runs/<run_id>/ writer: scenario.yaml, summary.json, requests.parquet
+```
+
+### 4.2 `RequestRecord` (replaces the ad-hoc fields on `TelemetryEvent`)
+
+```python
+class RequestRecord(BaseModel):
+    run_id: str
+    scenario: str
+    worker_id: str
+    iteration: int
+    node: str
+    attempt: int
+    interrupted: bool = False
+
+    ts_ingest_utc_ms: int    # server-stamped — authoritative for every bucket/chart
+    ts_agent_utc_ms: int     # agent-stamped — kept ONLY to compute clock skew
+
+    status: int
+    prompt_tokens: int
+    completion_tokens: int
+    ttft_ms: Optional[int]        # time to first streamed token/byte
+    itl_ms_mean: Optional[float]  # mean inter-token latency
+    total_ms: int
+    queue_wait_ms: int             # time spent in the pacer (or shadow equivalent)
+    ratelimit_headers: Dict[str, str]
+```
+
+`TelemetryEvent` (Phase 0's version, with `seq`) becomes a thin wire-format alias that the
+dashboard converts to `RequestRecord` on ingest — timestamping happens *here*, server-side, fixing
+finding #15 (the agent's own clock is never trusted for bucketing, only recorded for skew).
+
+### 4.3 TTFT/ITL capture — harness change
+
+`ModelHarness.stream_with_telemetry` records the monotonic time of the *first* yielded chunk
+(`ttft`) and the gaps between subsequent chunks (`itl` samples, averaged). `invoke_with_telemetry`
+(non-streamed) reports `ttft_ms = null` — it's not measurable without streaming, and the metrics
+schema must distinguish "not applicable" from "zero."
+
+While here: fix finding #24 — `ModelHarness` gets a persistent `httpx.AsyncClient` (one per
+worker process, `httpx.Limits(max_connections=20, keepalive_expiry=30)`), constructed once and
+reused across calls instead of one-per-request. This matters specifically because Phase 4 is where
+latency numbers start being trusted for TTFT comparisons; a fresh TCP+TLS handshake inside every
+measurement was never acceptable for that.
+
+### 4.4 Percentiles without unbounded memory
+
+`histogram.py` wraps a t-digest (or HDR) per `(worker_id, node)` pair, fed every `RequestRecord`,
+queried for p50/p90/p95/p99 on demand. Bounded memory regardless of run length; raw records still
+go to the Parquet artifact for exact offline analysis.
+
+### 4.5 Run artifacts
+
+```
+runs/<run_id>/
+├── scenario.yaml      # resolved (env vars substituted) — reproducibility
+├── summary.json       # aggregates: RPS, tokens/s in+out, percentiles, 429 rate, dropped, git SHA
+└── requests.parquet   # every RequestRecord, raw
+```
+
+Written incrementally during the run (append to Parquet, flush `summary.json` every few seconds) so
+a crashed run still leaves a usable partial artifact.
+
+### 4.6 `GET /metrics` (Prometheus exposition format)
+
+```
+agent_harness_requests_total{worker="w1",status="200"} 142
+agent_harness_tokens_total{worker="w1",direction="in"} 98213
+agent_harness_request_duration_ms{worker="w1",quantile="0.95"} 1830
+agent_harness_dropped_iterations_total{worker="w1"} 3
+agent_harness_ttft_ms{worker="w1",quantile="0.95"} 410
+```
+
+Scrape this from Prometheus; a starter Grafana dashboard JSON ships in
+`dashboard/grafana/starter-dashboard.json` with panels for RPS, token throughput, percentile
+latency, 429 rate, and dropped iterations — the "analysis tool" half that redesign-spec.md §5
+deliberately keeps out of the bespoke UI.
+
+### 4.7 Task breakdown
+
+1. `metrics/record.py`, `metrics/histogram.py`.
+2. Harness: persistent client, TTFT/ITL capture.
+3. `metrics/store.py` (ring buffer + Parquet writer), `metrics/artifact.py`.
+4. `metrics/prometheus.py` + `GET /metrics` route.
+5. Starter Grafana dashboard JSON.
+6. Tests: TTFT/ITL measured correctly against a fake streaming endpoint with known delays;
+   percentile estimator within tolerance of exact on a synthetic dataset; artifact survives a
+   simulated mid-run crash (partial `summary.json` is still valid JSON).
+
+---
+
+## Phase 5 — UI rebuild
+
+**Delivers:** the delta-protocol frontend. Deliberately last — rebuilding against a protocol that's
+still changing underneath it would be wasted work. Kills redesign-spec.md §2.3 (findings #13, #14,
+#16 — already partially fixed in Phase 0 — #20).
+
+### 5.1 Transport (`dashboard/app.py` additions)
+
+Three independent channels, matching redesign-spec.md §4.6:
+
+| Channel | Protocol | Payload |
+|---|---|---|
+| `GET /api/state` then `WS /api/state/stream` | WebSocket, delta | `{revision, patch: [...]}` (JSON Patch — RFC 6902 — against the fleet/budget/scenario state) |
+| `WS /api/metrics/stream?since=<cursor>` | WebSocket, append-only | `{cursor, rows: [{t, worker_id, tokens_in, tokens_out, requests, errors_429, dropped}, ...]}` |
+| `WS /api/events/stream?since_seq=<n>` | WebSocket, append-only | `{rows: [RequestRecord, ...]}`, keyed by the existing `seq` |
+
+Client reconnect: on any drop, re-`GET /api/state` (full resync) and re-request metrics/events
+`since` its last known cursor/seq — never re-sent as a full history, never silently gapped either.
+
+### 5.2 Frontend state (`dashboard/frontend/src/store/`)
+
+Zustand (small, no boilerplate, fits a dashboard this size better than full Redux Toolkit) with
+three slices mirroring the three channels:
+
+```
+store/
+├── fleetSlice.ts      # patched from /api/state deltas — workers, budgets, scenarios
+├── metricsSlice.ts     # append-only ring buffer per worker, fixed-capacity
+└── eventsSlice.ts      # append-only log, keyed by seq, fixed-capacity
+```
+
+Components read via `useSyncExternalStore`-based selectors; charts receive memoized, stable-identity
+data arrays so recharts doesn't remount on every tick (redesign-spec.md finding #13's actual fix —
+Phase 0's fix was only the chart/limit unit bug, not the remount-thrash).
+
+### 5.3 Components
+
+- `FleetView` — one card per worker; Start/Stop/Interrupt/Kill wired to the Phase 1 API; status
+  badge driven by the server-derived `status` field (never recomputed client-side); explicit
+  **"pending…"** state with elapsed time when `applied_generation < generation`.
+- `BudgetPanel` — the Phase 2 form-submit editor.
+- `ScenarioLauncher` — lists scenario YAML files, shows the resolved plan (`--dry-run` output) before
+  launch, replaces the `/act/1` / `/act/2` buttons.
+- `LiveChart` — per-worker sparkline from `metricsSlice`, normalized tokens/min, `isAnimationActive
+  ={false}`.
+- `EventLog` — virtualized (e.g. `react-window`) so a long-running log doesn't bloat the DOM; rows
+  keyed by `seq` (Phase 0's fix, carried forward unchanged).
+- `ConnectionBadge` — subscribes to all three WS connection states; shows reconnecting/connected/
+  stale, driven by `onopen`/`onerror`/`onclose`, fixing finding #20 (silently empty fleet on drop).
+
+### 5.4 Dev loop
+
+Phase 0's vite proxy (`/events`, `/control`, etc.) is replaced with a proxy for `/api` and the three
+`/api/*/stream` WebSocket paths — a smaller, cleaner config now that Phase 1 moved everything under
+one prefix (closing the other half of redesign-spec.md finding #19).
+
+### 5.5 Task breakdown
+
+1. `GET /api/state` + `WS /api/state/stream` (JSON Patch deltas) in `dashboard/app.py`.
+2. `WS /api/metrics/stream`, `WS /api/events/stream`, both cursor-based.
+3. Zustand store + three slices + reconnect-and-resync logic.
+4. Component rebuild: `FleetView`, `BudgetPanel`, `ScenarioLauncher`, `LiveChart`, `EventLog`,
+   `ConnectionBadge`.
+5. Vite proxy update.
+6. Tests: a Playwright (or equivalent) smoke test driving Start → see status flip to `running` →
+   Stop → see `draining` then `stopped`, against a real (not mocked) backend — this is the
+   regression test for "state issues... struggling to stop them" specifically.
+
+---
+
+## Cross-phase notes
+
+- **Backward compatibility window:** Phase 1's shims for `/register`/`/control`/`/events` should be
+  removed once Phase 5 ships (nothing should still be calling them by then).
+- **Scale checkpoint:** if fleet size grows past ~50 workers on one machine, revisit §7 open question
+  3 in `redesign-spec.md` — SQLite + HTTP polling is comfortable below that; past it, a push-based
+  (WebSocket-from-worker) or ZMQ-style (Locust) transport for heartbeats is worth it.
+- **Don't let Phase 3 block on Phase 1/2 being "finished":** the executor/scenario layer only needs
+  `WorkerStopped`/`stop_event` (Phase 0) and a harness to drive — it doesn't need budgets or the
+  supervisor. If sequencing pressure appears, Phase 3 can run in parallel with Phase 2.

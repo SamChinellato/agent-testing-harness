@@ -11,6 +11,10 @@ from pydantic import BaseModel, Field
 
 class TelemetryEvent(BaseModel):
     ts: str = Field(default_factory=lambda: datetime.now().isoformat())
+    # Assigned by the dashboard on ingest (0 until then). Monotonically
+    # increasing, so the UI can key log rows by `seq` instead of array index —
+    # see docs/phase-0-hotfixes.md #0.9. Agents never need to set this.
+    seq: int = 0
     user: str
     team: str
     agent: str

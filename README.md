@@ -67,6 +67,9 @@ For full setup details, see [**Getting Started**](docs/getting-started.md).
 | [Writing an Agent](docs/writing-an-agent.md)       | How to write a new agent and plug it into the harness             |
 | [How the Harness Works](docs/harness-internals.md) | ModelHarness, TokenBucket, TelemetryEmitter — internals           |
 | [API Reference](docs/api-reference.md)             | All REST endpoints used by agents and the dashboard               |
+| [Redesign Spec](docs/redesign-spec.md)              | Root-cause review + target architecture for the control/state/UI rewrite |
+| [Phase 0 — Hotfixes](docs/phase-0-hotfixes.md)      | ✅ Landed low-risk fixes (stop reliability, role mapping, etc.)    |
+| [Phase 1–5 Plan](docs/phase-1-5-implementation-plan.md) | Implementation plan for the full control-plane/budgets/scenarios/metrics/UI rewrite |
 
 
 ---

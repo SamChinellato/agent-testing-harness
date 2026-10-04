@@ -7,7 +7,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.graph import StateGraph, END
 from pydantic import BaseModel, Field
 
-from maasagentharness.harness import ModelHarness, RateLimitExceeded
+from maasagentharness.harness import ModelHarness, RateLimitExceeded, WorkerStopped
 
 
 DATA_DIR = Path(__file__).parent.parent / "data"
@@ -35,9 +35,8 @@ class ResearchAgent:
     and synthesizes results even if partial workers fail or get rate limited (429).
     """
 
-    def __init__(self, harness: ModelHarness, stop_check=None):
+    def __init__(self, harness: ModelHarness):
         self.harness = harness
-        self.stop_check = stop_check  # callable () -> bool: True = keep running
         self._load_policies_sample()
         self.graph = self._build_graph()
 
@@ -73,6 +72,9 @@ Output only a valid JSON array of strings representing the sub-questions. Do not
                     sub_questions = json.loads(match.group(0))
                 else:
                     sub_questions = [line.strip("- 1234567890.") for line in response.split("\n") if line.strip()][:8]
+            except WorkerStopped:
+                # Propagate — a Stop command, not a planner failure to fall back from.
+                raise
             except Exception:
                 sub_questions = [
                     "What are the eligibility criteria for hardship assistance?",
@@ -115,6 +117,12 @@ Provide a concise, factual 2-sentence answer based strictly on the policy excerp
                     answer="[UNAVAILABLE: Request rate limited by MaaS gateway (429)]",
                     status="throttled",
                 )
+            except WorkerStopped:
+                # Phase 0 fix #0.3/#0.4: a Stop command interrupted this
+                # worker call. Propagate rather than recording it as a
+                # "failed" result — the research cycle itself is being
+                # aborted, not this one sub-question.
+                raise
             except Exception as e:
                 return SubQuestionResult(
                     sub_question=sub_q,
@@ -123,12 +131,15 @@ Provide a concise, factual 2-sentence answer based strictly on the policy excerp
                 )
 
         async def parallel_workers_node(state: ResearchState):
-            # Run workers sequentially — avoids token burst and allows stop checks.
+            # Run workers sequentially — avoids token burst. A Stop command
+            # raises WorkerStopped out of execute_worker (via the harness),
+            # which propagates straight out of this node and the graph —
+            # see docs/phase-0-hotfixes.md #0.3/#0.4. This replaces the old
+            # per-iteration `stop_check` callback, which only ever saw
+            # whatever control_state the background poller had last written
+            # before the cycle started, not a live signal.
             results = []
             for sub_q in state.sub_questions:
-                # Respect stop signal between each worker
-                if self.stop_check is not None and not self.stop_check():
-                    break
                 results.append(await execute_worker(sub_q, state))
             return {"worker_results": results}
 
@@ -157,6 +168,8 @@ Provide an executive summary synthesis."""
                 )
             except RateLimitExceeded:
                 synthesis = f"Synthesis incomplete: Synthesizer throttled (429). {len(successful_answers)} of {len(state.worker_results)} sub-questions resolved successfully."
+            except WorkerStopped:
+                raise
             except Exception as e:
                 synthesis = f"Synthesis incomplete: {str(e)}. {len(successful_answers)} of {len(state.worker_results)} sub-questions resolved."
 

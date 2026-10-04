@@ -48,6 +48,7 @@ interface UserMetrics {
 }
 
 interface TelemetryEvent {
+  seq: number;
   ts: string;
   user: string;
   team: string;
@@ -427,9 +428,9 @@ export const App: React.FC = () => {
                     </thead>
                     <tbody>
                       {data.recent_events && data.recent_events.length > 0 ? (
-                        [...data.recent_events].reverse().map((ev, i) => (
+                        [...data.recent_events].reverse().map((ev) => (
                           <tr
-                            key={i}
+                            key={ev.seq}
                             style={{
                               borderBottom: '1px solid #F0F0F0',
                               backgroundColor: ev.status === 429 ? '#FFF0F0' : 'transparent',
