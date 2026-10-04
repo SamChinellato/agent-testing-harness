@@ -19,7 +19,7 @@ function row(page: Page, name: string) {
 test('shows the fleet, the live connection, and the readouts', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Agent bench' })).toBeVisible();
-  await expect(page.getByText('Live', { exact: true })).toBeVisible();
+  await expect(page.getByText('Live', { exact: true })).toHaveCount(0);
   await expect(page.getByText('Tokens / min')).toBeVisible();
   await expect(row(page, 'Dispute triage')).toBeVisible();
   await expect(row(page, 'Policy research')).toBeVisible();

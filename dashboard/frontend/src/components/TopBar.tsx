@@ -55,9 +55,11 @@ export function TopBar({ snapshot }: { snapshot: Snapshot | null }) {
     <header className="topbar">
       <h1 className="wordmark">Agent bench</h1>
       <div className="topbar__right">
-        <Label color={link.colour} isCompact role="status" aria-live="polite">
-          {link.text}
-        </Label>
+        {connection !== 'live' && (
+          <Label color={link.colour} isCompact role="status" aria-live="polite">
+            {link.text}
+          </Label>
+        )}
         <Button variant="secondary" isDisabled={busy || running.length === 0} onClick={() => void stopAll()}>
           Stop all
         </Button>
