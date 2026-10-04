@@ -110,11 +110,11 @@ class DesiredStateResponse(BaseModel):
     generation: int = 0
     interrupt_token: int = 0
     unregistered: bool = False
-    # Transitional — see control/limits.py's module docstring. Phase 2
-    # replaces this with real Budget resolution; until then it's how the
-    # worker's pacer stays in sync with the (still-shipped) dashboard's TPM
-    # editor after Phase 1 moved desired-state polling off the legacy
-    # /control/{id} endpoint that used to carry this field.
+    # The NOMINAL tokens_per_minute of this worker's resolved Budget
+    # (control/budgets.py's resolve_budget — worker-assignment > team >
+    # global > unbudgeted), or None if nothing resolved. This is how the
+    # worker's pacer stays in sync without a separate endpoint: it's
+    # included right here in the hot polling path.
     limit_tpm: Optional[int] = None
 
 

@@ -8,6 +8,12 @@ from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Request
 
+from maasagentharness.control.budgets import (
+    BudgetUpdate,
+    BudgetView,
+    ResolvedBudgetView,
+    resolve_budget,
+)
 from maasagentharness.control.models import (
     DesiredPatch,
     DesiredStateResponse,
@@ -16,11 +22,11 @@ from maasagentharness.control.models import (
     RegisterRequest,
     WorkerRecord,
 )
-from maasagentharness.control.limits import effective_limit_tpm
 from maasagentharness.control.store import WorkerStore
 from maasagentharness.control.supervisor import ManagedWorkerError, Supervisor
 
 router = APIRouter(prefix="/api/workers", tags=["workers"])
+budgets_router = APIRouter(prefix="/api/budgets", tags=["budgets"])
 
 
 def _store(request: Request) -> WorkerStore:
@@ -52,9 +58,17 @@ async def list_workers(request: Request):
 
 @router.get("/{worker_id}/desired", response_model=DesiredStateResponse)
 async def get_desired(worker_id: str, request: Request):
-    record = await _store(request).get(worker_id)
+    store = _store(request)
+    record = await store.get(worker_id)
     if record is None:
         return DesiredStateResponse(unregistered=True)
+    budgets = await store.list_budgets()
+    resolved = resolve_budget(record, budgets)
+    limit_tpm = (
+        int(resolved.budget.tokens_per_minute)
+        if resolved.budget.tokens_per_minute is not None
+        else None
+    )
     return DesiredStateResponse(
         state=record.desired_state,
         agent=record.desired_agent,
@@ -63,8 +77,19 @@ async def get_desired(worker_id: str, request: Request):
         generation=record.generation,
         interrupt_token=record.interrupt_token,
         unregistered=False,
-        limit_tpm=effective_limit_tpm(record.worker_id, record.team),
+        limit_tpm=limit_tpm,
     )
+
+
+@router.get("/{worker_id}/budget", response_model=ResolvedBudgetView)
+async def get_worker_budget(worker_id: str, request: Request):
+    store = _store(request)
+    record = await store.get(worker_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Unknown worker '{worker_id}'")
+    budgets = await store.list_budgets()
+    resolved = resolve_budget(record, budgets)
+    return ResolvedBudgetView.from_resolved(resolved)
 
 
 @router.patch("/{worker_id}/desired", response_model=WorkerRecord)
@@ -165,3 +190,47 @@ async def forget_worker(worker_id: str, request: Request):
             detail=f"Worker '{worker_id}' is {record.status} — stop it before forgetting it.",
         )
     await store.delete(worker_id)
+
+
+# ---------------------------------------------------------------------------
+# Phase 2: budgets
+# ---------------------------------------------------------------------------
+
+@budgets_router.get("", response_model=list[BudgetView])
+async def list_budgets(request: Request):
+    store = _store(request)
+    return [BudgetView.from_budget(b) for b in await store.list_budgets()]
+
+
+@budgets_router.put("/{budget_id}", response_model=BudgetView)
+async def put_budget(budget_id: str, update: BudgetUpdate, request: Request):
+    """Full replace, not a patch — see BudgetUpdate's docstring. Upserts:
+    PUT-ing an unknown `budget_id` creates it.
+    """
+    store = _store(request)
+    budget = await store.put_budget(
+        budget_id,
+        scope=update.scope,
+        scope_ref=update.scope_ref,
+        tokens_per_minute=update.tokens_per_minute,
+        requests_per_minute=update.requests_per_minute,
+        max_concurrency=update.max_concurrency,
+        headroom=update.headroom,
+        enforcement=update.enforcement,
+    )
+    return BudgetView.from_budget(budget)
+
+
+@budgets_router.delete("/{budget_id}", status_code=204)
+async def delete_budget(budget_id: str, request: Request):
+    store = _store(request)
+    assigned = await store.count_workers_assigned_to_budget(budget_id)
+    if assigned > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Budget '{budget_id}' is still assigned to {assigned} worker(s) — "
+                   f"reassign or stop them before deleting it.",
+        )
+    deleted = await store.delete_budget(budget_id)
+    if not deleted:
+        raise HTTPException(status_code=404, detail=f"Unknown budget '{budget_id}'")

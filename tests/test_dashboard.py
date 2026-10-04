@@ -3,8 +3,10 @@
 These exercise /register, /control/{id}, /act, /reset, /limits, /events —
 the routes the currently-shipped React dashboard still calls. Phase 1 made
 them delegate to the same SQLite-backed WorkerStore the new /api/workers
-routes use (see maasagentharness/dashboard/app.py's module docstring on the
-"Legacy v1 control API" section) instead of in-memory dicts.
+routes use; Phase 2 made `limit_tpm` delegate to the same Budget records
+`/api/budgets` uses (see maasagentharness/dashboard/app.py's module
+docstring on the "Legacy v1 control API" section) instead of in-memory
+dicts.
 
 httpx.ASGITransport does not run FastAPI's lifespan, so these fixtures wire
 up `app.state.worker_store` directly rather than relying on `_lifespan`.
@@ -12,7 +14,6 @@ up `app.state.worker_store` directly rather than relying on `_lifespan`.
 import httpx
 import pytest
 
-from maasagentharness.control.limits import team_limits, worker_limits
 from maasagentharness.control.store import WorkerStore
 from maasagentharness.control.supervisor import Supervisor
 from maasagentharness.dashboard import app as dashboard_app
@@ -25,8 +26,6 @@ async def client(tmp_path):
     dashboard_app.app.state.worker_store = store
     dashboard_app.app.state.supervisor = Supervisor(store)
 
-    team_limits.clear()
-    worker_limits.clear()
     dashboard_app.registered_mode_defaults.clear()
     dashboard_app.events_buffer.clear()
 

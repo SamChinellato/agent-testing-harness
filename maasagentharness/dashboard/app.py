@@ -12,8 +12,8 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from maasagentharness.control.api import router as workers_router
-from maasagentharness.control.limits import effective_limit_tpm, team_limits, worker_limits
+from maasagentharness.control.api import budgets_router, router as workers_router
+from maasagentharness.control.budgets import Budget, resolve_budget
 from maasagentharness.control.store import WorkerStore
 from maasagentharness.control.supervisor import Supervisor
 from maasagentharness.telemetry import TelemetryEvent
@@ -48,6 +48,7 @@ async def _lifespan(app: FastAPI):
 
 app = FastAPI(title="MaaS Rate-Limit Demo Dashboard API", lifespan=_lifespan)
 app.include_router(workers_router)
+app.include_router(budgets_router)
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,26 +68,41 @@ events_buffer: List[TelemetryEvent] = []
 _next_seq = 0  # Phase 0 fix #0.9 — monotonically increasing event id.
 
 # --- Legacy v1 control API -------------------------------------------------
-# Everything below this line that reads/writes `worker_limits`, `team_limits`,
-# or `registered_mode_defaults` is the v1 compatibility layer: /register,
-# /control/{id}, /act/{N}, /reset, /limits/{team}. These exist for two
-# reasons: (1) any agent still running the pre-Phase-1 runner.py talks to
-# them, and (2) the *shipped* React dashboard (dashboard/frontend) still
-# calls them and isn't rebuilt until Phase 5. Both now delegate to the same
-# `WorkerStore` the new /api/workers routes use — there is exactly one
-# source of truth for fleet state, persisted, surviving a dashboard
-# restart. That's the actual fix for redesign-spec.md finding #6; this
-# module just also happens to keep presenting it in the old shape so nothing
-# upstream breaks.
+# Everything below this line that touches `registered_mode_defaults`, a
+# worker's `limit_tpm`, or a team's limit is the v1 compatibility layer:
+# /register, /control/{id}, /act/{N}, /reset, /limits/{team}. These exist
+# for two reasons: (1) any agent still running the pre-Phase-1 runner.py
+# talks to them, and (2) the *shipped* React dashboard (dashboard/frontend)
+# still calls them and isn't rebuilt until Phase 5. All of them now delegate
+# to the same `WorkerStore` (and, as of Phase 2, the same `Budget` records)
+# the new `/api/workers` and `/api/budgets` routes use — there is exactly
+# one source of truth for both fleet state and rate limits, persisted,
+# surviving a dashboard restart.
 #
-# `limit_tpm` has no home in the v2 WorkerRecord schema on purpose — Phase 2
-# replaces it with a proper scoped `Budget` object (see
-# docs/phase-1-5-implementation-plan.md §Phase 2). `team_limits` and
-# `worker_limits` live in control/limits.py (not here) because control/api.py's
-# v2 `/desired` route needs to read them too, to keep a worker's pacer in
-# sync after Phase 1 moved it off the legacy /control/{id} endpoint — see
-# that module's docstring.
+# Phase 2 specifically: `limit_tpm` as a flat dict (Phase 1's now-deleted
+# control/limits.py bridge) is gone. Reading it now means
+# `resolve_budget(worker, all_budgets)`
+# — worker-assignment > team > global — exactly like `/api/workers/{id}/budget`
+# does. Writing it now means creating/updating a real `Budget` row:
+#   - POST /control/{id} {"limit_tpm": N} -> upserts a worker-scoped budget
+#     and explicitly assigns it to that one worker (an override).
+#   - POST /limits/{team} {"limit_tpm": N} -> upserts a team-scoped budget.
+#     Unlike the Phase 1 bridge, this does NOT touch individual workers'
+#     own overrides — previously it silently overwrote every worker in the
+#     team, including ones that had been edited individually, which was
+#     really "bulk-edit everyone" wearing a "team limit" label. Real scoped
+#     resolution means a worker-level override now actually stays put
+#     against a team-level change, which is the behavior "team limit" always
+#     implied but never delivered.
 registered_mode_defaults: Dict[str, str] = {}
+
+
+def _worker_budget_id(worker_id: str) -> str:
+    return f"worker:{worker_id}"
+
+
+def _team_budget_id(team: str) -> str:
+    return f"team:{team}"
 
 
 class AgentRegistration(BaseModel):
@@ -119,23 +135,35 @@ class ControlPatch(BaseModel):
     limit_tpm: Optional[int] = None
 
 
-def _legacy_control_shape(w) -> Dict[str, Any]:
+def _legacy_control_shape(w, budgets: List[Budget]) -> Dict[str, Any]:
     """WorkerRecord -> the pre-Phase-1 /control/{id} response shape, plus a
-    few additive fields (`status`, `phase`, `generation`) that the current
-    frontend ignores but a future one (or a curious `curl`) can already use.
+    few additive fields (`status`, `phase`, `generation`, `resolved_via`)
+    that the current frontend ignores but a future one (or a curious
+    `curl`) can already use. `limit_tpm` is the NOMINAL (pre-headroom)
+    resolved budget value — what you'd see if you typed it back unchanged;
+    the pacer applies headroom itself, same as before.
     """
+    resolved = resolve_budget(w, budgets)
+    limit_tpm = resolved.budget.tokens_per_minute
+    if limit_tpm is None:
+        # enforcement="off" / truly no budget resolved — the legacy UI has
+        # no way to display "unenforced", so show a harmless placeholder
+        # rather than `null`. The /api/workers/{id}/budget route (and
+        # Phase 5's UI) show the real, honest resolved state.
+        limit_tpm = 2000
     return {
         "user": w.worker_id,
         "team": w.team,
         "state": w.desired_state,
         "agent": w.desired_agent,
         "mode": w.desired_mode,
-        "limit_tpm": worker_limits.get(w.worker_id, team_limits.get(w.team, 2000)),
+        "limit_tpm": limit_tpm,
         "unregistered": False,
         "status": w.status,
         "phase": str(w.phase),
         "generation": w.generation,
         "applied_generation": w.applied_generation,
+        "resolved_via": resolved.resolved_via,
     }
 
 
@@ -167,8 +195,15 @@ async def register_agent(reg: AgentRegistration, request: Request):
         agent=reg.agent,
         mode=reg.mode,
     )
-    worker_limits.setdefault(reg.user, reg.limit_tpm)
-    team_limits.setdefault(reg.team, reg.limit_tpm)
+    # Phase 2: registration no longer seeds a per-worker limit override —
+    # that was the old design's actual bug (every worker got an
+    # unconditional individual entry that nothing else could ever fall
+    # back past). A freshly registered worker now resolves against
+    # team/global budgets like any other, until something explicitly
+    # overrides it (see `update_control`/`update_team_limit` below).
+    # `reg.limit_tpm` (from each agent's own LIMIT_TPM env var) is
+    # intentionally unused here — the dashboard's Budget store is now
+    # authoritative, not each agent's own startup config.
     registered_mode_defaults.setdefault(reg.user, reg.mode)
     return {"status": "registered", "user": reg.user}
 
@@ -213,7 +248,8 @@ async def get_control(user_id: str, request: Request):
     store: WorkerStore = request.app.state.worker_store
     record = await store.get(user_id)
     if record is not None:
-        return _legacy_control_shape(record)
+        budgets = await store.list_budgets()
+        return _legacy_control_shape(record, budgets)
     # Phase 0 fix #0.1 (carried into v2's store): unknown worker means
     # stopped, with an explicit `unregistered` flag — never "running".
     return {
@@ -244,21 +280,60 @@ async def update_control(user_id: str, patch: ControlPatch, request: Request):
     if state_patch:
         record = await store.patch_desired(user_id, state_patch)
     if patch.limit_tpm is not None:
-        worker_limits[user_id] = patch.limit_tpm
-        record = await store.get(user_id)
+        # Editing one worker's TPM creates/updates a worker-scoped budget
+        # and explicitly assigns it — an override that beats team/global
+        # resolution for this one worker, same as Phase 1's bridge
+        # behaved, now backed by a real Budget row instead of a dict entry.
+        budget_id = _worker_budget_id(user_id)
+        await store.put_budget(
+            budget_id, scope="worker", scope_ref=user_id,
+            tokens_per_minute=patch.limit_tpm, requests_per_minute=None,
+            max_concurrency=None, headroom=0.90, enforcement="client_bucket",
+        )
+        record = await store.patch_desired(user_id, {"budget_id": budget_id})
 
-    return _legacy_control_shape(record)
+    budgets = await store.list_budgets()
+    return _legacy_control_shape(record, budgets)
 
 
 @app.post("/limits/{team_id}")
 async def update_team_limit(team_id: str, payload: Dict[str, Any], request: Request):
+    """Upserts a team-scoped Budget. Unlike the pre-Phase-2 version, this
+    does NOT touch any worker's individual override — see this module's
+    "Legacy v1 control API" docstring for why that's a fix, not a
+    regression.
+    """
     store: WorkerStore = request.app.state.worker_store
     new_limit = int(payload.get("limit_tpm", 2000))
-    team_limits[team_id] = new_limit
-    for w in await store.list():
-        if w.team == team_id:
-            worker_limits[w.worker_id] = new_limit
+    budget_id = _team_budget_id(team_id)
+    await store.put_budget(
+        budget_id, scope="team", scope_ref=team_id,
+        tokens_per_minute=new_limit, requests_per_minute=None,
+        max_concurrency=None, headroom=0.90, enforcement="client_bucket",
+    )
     return {"team": team_id, "limit_tpm": new_limit}
+
+
+async def _display_team_limits(store: WorkerStore, workers: List) -> Dict[str, int]:
+    """Informational only — the shipped frontend's `DashboardState.limits`
+    type exists but nothing in App.tsx actually renders it. Built from
+    real team-scoped (falling back to global) Budget resolution so it's
+    at least honest if anything ever does read it.
+    """
+    budgets = await store.list_budgets()
+    teams = {w.team for w in workers}
+    out: Dict[str, int] = {}
+    for team in teams:
+        for b in budgets:
+            if b.scope == "team" and b.scope_ref == team and b.tokens_per_minute is not None:
+                out[team] = b.tokens_per_minute
+                break
+        else:
+            for b in budgets:
+                if b.scope == "global" and b.tokens_per_minute is not None:
+                    out[team] = b.tokens_per_minute
+                    break
+    return out
 
 
 @app.post("/act/{act_num}")
@@ -280,10 +355,11 @@ async def set_act(act_num: int, request: Request):
             else:
                 await store.patch_desired(w.worker_id, {"state": "running", "mode": "paced"})
     workers = await store.list()
+    budgets = await store.list_budgets()
     return {
         "act": act_num,
-        "control": {w.worker_id: _legacy_control_shape(w) for w in workers},
-        "limits": team_limits,
+        "control": {w.worker_id: _legacy_control_shape(w, budgets) for w in workers},
+        "limits": await _display_team_limits(store, workers),
     }
 
 
@@ -296,10 +372,11 @@ async def reset(request: Request):
         default_mode = registered_mode_defaults.get(w.worker_id, w.desired_mode)
         await store.patch_desired(w.worker_id, {"state": "stopped", "mode": default_mode})
     workers = await store.list()
+    budgets = await store.list_budgets()
     return {
         "status": "reset",
-        "control": {w.worker_id: _legacy_control_shape(w) for w in workers},
-        "limits": team_limits,
+        "control": {w.worker_id: _legacy_control_shape(w, budgets) for w in workers},
+        "limits": await _display_team_limits(store, workers),
     }
 
 
@@ -382,13 +459,14 @@ async def events_stream(request: Request):
                 if await request.is_disconnected():
                     break
                 workers = await store.list()
-                control = {w.worker_id: _legacy_control_shape(w) for w in workers}
+                budgets = await store.list_budgets()
+                control = {w.worker_id: _legacy_control_shape(w, budgets) for w in workers}
                 agent_registry = {w.worker_id: _legacy_registry_shape(w) for w in workers}
                 metrics_data = await calculate_metrics(list(control.keys()))
                 payload = {
                     "timestamp": time.time(),
                     "control": control,
-                    "limits": team_limits,
+                    "limits": await _display_team_limits(store, workers),
                     "agent_registry": agent_registry,
                     **metrics_data,
                 }

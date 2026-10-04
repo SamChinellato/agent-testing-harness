@@ -13,7 +13,16 @@ from typing import Any, Dict, List, Optional
 
 import aiosqlite
 
+from maasagentharness.control.budgets import Budget
 from maasagentharness.control.models import Phase, WorkerRecord, derive_status
+
+# Seeded once, the first time a fresh store connects, so a new install
+# behaves like the pre-Phase-2 default (every agent starts with an
+# editable 2000 TPM budget) instead of silently unbudgeted. It's a real,
+# ordinary Budget row after that — editable and deletable like any other,
+# not special-cased anywhere except this one bootstrap check.
+_GLOBAL_DEFAULT_BUDGET_ID = "global-default"
+_GLOBAL_DEFAULT_TOKENS_PER_MINUTE = 2000
 
 # Heartbeat cadence and lease TTL. LEASE_TTL must stay >= 3x HEARTBEAT_INTERVAL
 # so that a single missed heartbeat (network blip) doesn't immediately read
@@ -51,6 +60,18 @@ CREATE TABLE IF NOT EXISTS workers (
     updated_at REAL NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_workers_team ON workers(team);
+
+CREATE TABLE IF NOT EXISTS budgets (
+    budget_id TEXT PRIMARY KEY,
+    scope TEXT NOT NULL,
+    scope_ref TEXT,
+    tokens_per_minute INTEGER,
+    requests_per_minute INTEGER,
+    max_concurrency INTEGER,
+    headroom REAL NOT NULL DEFAULT 0.90,
+    enforcement TEXT NOT NULL DEFAULT 'client_bucket',
+    updated_at REAL NOT NULL
+);
 """
 
 _COLUMNS = [
@@ -62,6 +83,11 @@ _COLUMNS = [
     "created_at", "updated_at",
 ]
 
+_BUDGET_COLUMNS = [
+    "budget_id", "scope", "scope_ref", "tokens_per_minute", "requests_per_minute",
+    "max_concurrency", "headroom", "enforcement", "updated_at",
+]
+
 
 def _row_to_record(row: Any) -> WorkerRecord:
     d: Dict[str, Any] = dict(zip(_COLUMNS, row))
@@ -69,6 +95,10 @@ def _row_to_record(row: Any) -> WorkerRecord:
     record = WorkerRecord(**d, status="")
     record.status = derive_status(record)
     return record
+
+
+def _row_to_budget(row: Any) -> Budget:
+    return Budget(**dict(zip(_BUDGET_COLUMNS, row)))
 
 
 class WorkerStore:
@@ -87,6 +117,28 @@ class WorkerStore:
         await self._conn.execute("PRAGMA journal_mode=WAL;")
         await self._conn.executescript(_SCHEMA)
         await self._conn.commit()
+        await self._bootstrap_default_budget()
+
+    async def _bootstrap_default_budget(self) -> None:
+        """Seed a global 2000-TPM budget the first time this store's
+        `budgets` table is empty, so a fresh install behaves like the
+        pre-Phase-2 baseline (every agent starts with an editable limit)
+        rather than silently unbudgeted. One-time; after this it's an
+        ordinary row, editable/deletable through the normal budget API.
+        """
+        cur = await self._conn.execute("SELECT COUNT(*) FROM budgets")
+        (count,) = await cur.fetchone()
+        if count == 0:
+            await self.put_budget(
+                _GLOBAL_DEFAULT_BUDGET_ID,
+                scope="global",
+                scope_ref=None,
+                tokens_per_minute=_GLOBAL_DEFAULT_TOKENS_PER_MINUTE,
+                requests_per_minute=None,
+                max_concurrency=None,
+                headroom=0.90,
+                enforcement="client_bucket",
+            )
 
     async def close(self) -> None:
         if self._conn is not None:
@@ -306,3 +358,76 @@ class WorkerStore:
             )
             await self._conn.commit()
             return cur.rowcount > 0
+
+    # -- Phase 2: budgets --------------------------------------------------
+
+    async def put_budget(
+        self,
+        budget_id: str,
+        scope: str,
+        scope_ref: Optional[str],
+        tokens_per_minute: Optional[int],
+        requests_per_minute: Optional[int],
+        max_concurrency: Optional[int],
+        headroom: float,
+        enforcement: str,
+    ) -> Budget:
+        """Full replace (upsert) — PUT semantics, matching
+        docs/phase-1-5-implementation-plan.md §2.3's "this is a form
+        submission, not a patch" framing.
+        """
+        assert self._conn is not None
+        now = time.time()
+        async with self._lock:
+            await self._conn.execute(
+                """INSERT INTO budgets
+                   (budget_id, scope, scope_ref, tokens_per_minute, requests_per_minute,
+                    max_concurrency, headroom, enforcement, updated_at)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                   ON CONFLICT(budget_id) DO UPDATE SET
+                     scope = excluded.scope,
+                     scope_ref = excluded.scope_ref,
+                     tokens_per_minute = excluded.tokens_per_minute,
+                     requests_per_minute = excluded.requests_per_minute,
+                     max_concurrency = excluded.max_concurrency,
+                     headroom = excluded.headroom,
+                     enforcement = excluded.enforcement,
+                     updated_at = excluded.updated_at""",
+                (budget_id, scope, scope_ref, tokens_per_minute, requests_per_minute,
+                 max_concurrency, headroom, enforcement, now),
+            )
+            await self._conn.commit()
+        budget = await self.get_budget(budget_id)
+        assert budget is not None
+        return budget
+
+    async def get_budget(self, budget_id: str) -> Optional[Budget]:
+        assert self._conn is not None
+        cur = await self._conn.execute(
+            f"SELECT {', '.join(_BUDGET_COLUMNS)} FROM budgets WHERE budget_id = ?", (budget_id,)
+        )
+        row = await cur.fetchone()
+        return _row_to_budget(row) if row else None
+
+    async def list_budgets(self) -> List[Budget]:
+        assert self._conn is not None
+        cur = await self._conn.execute(f"SELECT {', '.join(_BUDGET_COLUMNS)} FROM budgets")
+        rows = await cur.fetchall()
+        return [_row_to_budget(r) for r in rows]
+
+    async def delete_budget(self, budget_id: str) -> bool:
+        assert self._conn is not None
+        async with self._lock:
+            cur = await self._conn.execute("DELETE FROM budgets WHERE budget_id = ?", (budget_id,))
+            await self._conn.commit()
+            return cur.rowcount > 0
+
+    async def count_workers_assigned_to_budget(self, budget_id: str) -> int:
+        """Used to refuse deleting a budget something still points at —
+        see DELETE /api/budgets/{id}'s 409 case."""
+        assert self._conn is not None
+        cur = await self._conn.execute(
+            "SELECT COUNT(*) FROM workers WHERE desired_budget_id = ?", (budget_id,)
+        )
+        (count,) = await cur.fetchone()
+        return count

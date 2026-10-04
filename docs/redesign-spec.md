@@ -445,8 +445,10 @@ stopped/unknown/lost` phases; supervisor that spawns and signals managed workers
 [phase-1-5-implementation-plan.md](phase-1-5-implementation-plan.md) §1.9 for why). *Kills symptom
 2.1 entirely.*
 
-**Phase 2 — budgets.** Scoped `Budget` objects, effective-rate resolution, `shadow` enforcement,
-form-submit editor with Apply/Revert. *Kills symptom 2.2.*
+**Phase 2 — budgets.** ✅ **Implemented** (backend + API). Scoped `Budget` objects, effective-rate
+resolution, `shadow` enforcement. *Kills symptom 2.2 at the API/backend level.* The
+form-submit editor with Apply/Revert (§2.4's `BudgetEditor.tsx`) is explicitly deferred to Phase 5 —
+see [phase-1-5-implementation-plan.md](phase-1-5-implementation-plan.md) §2.7.
 
 **Phase 3 — scenarios and executors.** Scenario file, executor set, dropped-iteration accounting,
 `sweep`. Retire `/act/{1,2}` and `probe.py`. *Delivers the missing core capability from §1.*

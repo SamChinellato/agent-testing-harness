@@ -27,6 +27,10 @@ class TelemetryEvent(BaseModel):
     latency_ms: int = 0
     ratelimit_headers: Dict[str, str] = Field(default_factory=dict)
     attempt: int = 1
+    # Phase 2 — Budget.enforcement == "shadow": how long a real, enforcing
+    # pacer WOULD have delayed this call, measured without actually
+    # delaying it. 0 whenever shadow accounting isn't active for this call.
+    shadow_queue_wait_ms: int = 0
 
 
 class TelemetryEmitter:

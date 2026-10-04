@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Optional
 
 from maasagentharness.config import settings
+from maasagentharness.control.budgets import Budget
 from maasagentharness.control.client import ControlClient
 from maasagentharness.control.models import DesiredStateResponse, Phase
 from maasagentharness.harness import ModelHarness, WorkerInterrupted, WorkerStopped
@@ -65,10 +66,11 @@ class AgentWorker:
         self.current_node: Optional[str] = None
         self.iteration = 0
         self.last_error: Optional[str] = None
-        # Set in run_loop; `_sync_from_desired` uses it to keep the pacer's
-        # target in sync with `desired.limit_tpm` on every poll tick — see
-        # control/limits.py's docstring for why this bridge exists.
+        # Set in run_loop; `_poll_and_heartbeat_loop` keeps the harness's
+        # pacer in sync with the resolved Budget (control/budgets.py) on
+        # every poll tick via `self.harness.update_budget(...)`.
         self.harness: Optional[ModelHarness] = None
+        self.budget: Optional[Budget] = None
 
         self._poll_task: Optional[asyncio.Task] = None
         self._load_corpus()
@@ -140,13 +142,6 @@ class AgentWorker:
             self._last_seen_interrupt_token = desired.interrupt_token
             self.interrupt_event.set()
 
-        if (
-            self.harness is not None
-            and self.harness.pacer is not None
-            and desired.limit_tpm is not None
-        ):
-            self.harness.pacer.update_target(desired.limit_tpm * settings.paced_target_ratio)
-
     async def _poll_and_heartbeat_loop(self) -> None:
         """Runs concurrently with the main cycle loop — this is what lets a
         Stop or Interrupt command take effect mid-cycle instead of only
@@ -156,6 +151,15 @@ class AgentWorker:
         while True:
             desired = await self.control.get_desired()
             self._sync_from_desired(desired)
+
+            # Phase 2: fetch the full resolved Budget (not just the
+            # tokens_per_minute `desired` already carries) so enforcement
+            # mode (off/client_bucket/shadow) stays current too, not only
+            # the pacer's numeric target.
+            self.budget = await self.control.get_resolved_budget()
+            if self.harness is not None:
+                self.harness.update_budget(self.budget)
+
             await self.control.heartbeat(
                 applied_generation=self.applied_generation,
                 phase=self.phase.value,
@@ -186,6 +190,7 @@ class AgentWorker:
             mode=current_mode,
             stop_event=self.stop_event,
             interrupt_event=self.interrupt_event,
+            budget=self.budget,
         )
 
         was_running = False
@@ -220,6 +225,7 @@ class AgentWorker:
                         mode=mode,
                         stop_event=self.stop_event,
                         interrupt_event=self.interrupt_event,
+                        budget=self.budget,
                     )
                     assistant_instance = None
 

@@ -1,8 +1,8 @@
 # Phase 1–5 — Implementation Plan
 
-**Status:** Phase 1 ✅ **implemented** (branch `phase1-control-plane`) — see §Phase 1's
+**Status:** Phase 1 ✅ **implemented**, Phase 2 ✅ **implemented** — see each phase's
 "Implementation notes" subsection for what shipped and where it deviated from this plan.
-Phases 2–5 still draft.
+Phases 3–5 still draft.
 **Parent:** [redesign-spec.md](redesign-spec.md) §4, §6
 **Purpose:** this is the actionable, file-by-file companion to the architecture in
 `redesign-spec.md` §4. That document explains *why*; this one specifies *what to build*: concrete
@@ -288,6 +288,64 @@ row, so a chart can mark *"limit changed 2000 → 4000 here"*.
 4. `BudgetEditor.tsx` replacing `LimitEditor`.
 5. Tests: scope precedence (worker > team > global), shadow mode never delays, effective rate
    matches `tokens_per_minute * headroom` exactly.
+
+### 2.7 Implementation notes (what actually shipped, and where it deviated)
+
+**Files added:** `control/budgets.py` (`Budget`, `BudgetUpdate`, `BudgetView`, `ResolvedBudgetView`,
+`resolve_budget`, `DEFAULT_BUDGET`). **Files extended:** `control/store.py` (budgets table + CRUD +
+a one-time bootstrap), `control/api.py` (`budgets_router`, `GET /api/workers/{id}/budget`,
+`GET /api/workers/{id}/desired` now resolves a real Budget instead of a dict), `control/client.py`
+(`get_resolved_budget`), `pacer.py` (`shadow=True` mode), `harness.py` (`budget` param,
+`_pacing_action`, `update_budget`), `runner.py` (fetches the resolved budget every poll tick,
+alongside desired state), `dashboard/app.py` (legacy `/control`, `/limits` now write real Budget
+rows). **File deleted:** `control/limits.py` — the Phase 1 dict bridge, fully superseded.
+**Tests added:** `tests/test_budgets.py` (22 tests: pure `resolve_budget` precedence, pacer shadow
+semantics, `ModelHarness._pacing_action` across every mode×enforcement combination, all
+`/api/budgets` + `/api/workers/{id}/budget` routes, the legacy-route integration, and a full
+`AgentWorker` end-to-end test proving a live enforcement change actually reaches the running
+harness — not just that the unit pieces are individually correct). **Verified:**
+`uv run pytest tests/ -q` → 61 passed.
+
+**Deviation 1 — mode and enforcement are two independent axes, not one.** §2's schema is unchanged,
+but nothing in the original plan said how `Budget.enforcement` interacts with the pre-existing
+`naive`/`paced`/`runaway` agent mode. The naive answer — "paced mode always obeys whatever budget is
+configured" — would have broken the `runaway` scenario's entire purpose (it exists specifically to
+ignore limits). What shipped: `client_bucket` enforcement only actually blocks when `mode=="paced"`;
+`naive`/`runaway` never block on it, preserving their defining behavior. `shadow` enforcement runs
+*regardless of mode* — which turns out to be the more interesting case: measuring exactly how far a
+`naive` or `runaway` agent overshoots a budget it's deliberately not obeying, without altering its
+behavior. See `ModelHarness._pacing_action`'s docstring.
+
+**Deviation 2 — `TokenBucket.acquire()` now returns a float.** Not specified in §2.3/§2.6, but
+needed: shadow mode has to report "how long would this have waited," and the only place that
+computation naturally happens is inside the same refill/deduct logic a real acquire already runs.
+Returns `0.0` on the normal blocking path (unchanged behavior, now with an explicit no-op return
+value instead of implicit `None`). Shadow mode lets `tokens` go negative — a negative balance *is*
+the "how far over budget" signal, not a bug to clamp away.
+
+**Deviation 3 — the legacy `/control` and `/limits` routes don't just read the new system, they
+changed its behavior for the better.** The pre-Phase-2 bridge's `/limits/{team}` bulk-overwrote
+*every* worker's individual limit, including ones already edited one-by-one — it was a "team limit"
+in name only. Real scoped resolution means a worker-level override now survives a later team-level
+edit, which is what "team limit" should have meant all along. `tests/test_budgets.py`'s
+`test_worker_level_override_beats_team_update` is the regression test for exactly this. Also: a
+freshly registered worker no longer gets an automatic per-worker budget snapshot of its own
+`LIMIT_TPM` env var (the old design's actual defect — that snapshot is what made team/global
+resolution meaningless, since every worker already had its own entry that nothing could fall back
+past). It now resolves against team/global like any unconfigured worker, until something explicit
+overrides it.
+
+**Known limitation carried forward:** the legacy `/control/{id}` response still shows a plain
+`limit_tpm` integer with no way to display "unenforced" (enforcement="off") — it falls back to
+`2000` as a placeholder in that one case, since the pre-Phase-5 UI has no field for it.
+`GET /api/workers/{id}/budget` and `GET /api/budgets` show the honest resolved state, including
+`enforcement` and `resolved_via`, for anything that reads them instead.
+
+**Not yet done:** `BudgetEditor.tsx` (§2.4) — the shipped React dashboard still uses the old
+`LimitEditor`, which calls `/control/{id}` with `limit_tpm` exactly as before and therefore still
+works (now against real Budget rows under the hood), but doesn't yet expose enforcement mode,
+scope, or the worker-vs-team-vs-global distinction. That's explicitly bundled into Phase 5's UI
+rebuild rather than done piecemeal against a frontend about to be replaced.
 
 ---
 

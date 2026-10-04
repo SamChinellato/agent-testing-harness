@@ -9,6 +9,7 @@ from langchain_openai import ChatOpenAI
 from langchain_core.messages import BaseMessage
 
 from maasagentharness.config import settings
+from maasagentharness.control.budgets import Budget
 from maasagentharness.pacer import TokenBucket
 from maasagentharness.telemetry import TelemetryEvent, telemetry
 
@@ -83,15 +84,28 @@ class ModelHarness:
         pacer: Optional[TokenBucket] = None,
         stop_event: Optional[asyncio.Event] = None,
         interrupt_event: Optional[asyncio.Event] = None,
+        budget: Optional[Budget] = None,
     ):
         self.user_id = user_id or settings.user_id
         self.team_id = team_id or settings.team_id
         self.agent_name = agent_name
         self.mode = mode  # naive, paced, runaway
+        # Phase 2: `budget` is the resolved Budget (control/budgets.py) for
+        # this worker — None when the caller hasn't wired the budget system
+        # in (e.g. probe.py, or a test constructing ModelHarness directly),
+        # in which case pacing falls back to the pre-Phase-2 behavior:
+        # sized from `settings.limit_tpm`, active only in "paced" mode.
+        self.budget = budget
         self.pacer = pacer
-        if self.pacer is None and self.mode == "paced":
-            target_tpm = settings.limit_tpm * settings.paced_target_ratio
-            self.pacer = TokenBucket(target_tpm=target_tpm)
+        if self.pacer is None:
+            if budget is not None and budget.tokens_per_minute is not None:
+                # Sized regardless of `mode` — a "shadow" budget needs a
+                # pacer active even for naive/runaway agents to measure
+                # their overage; see `_pacing_action`.
+                self.pacer = TokenBucket(target_tpm=budget.effective_tokens_per_minute)
+            elif budget is None and self.mode == "paced":
+                target_tpm = settings.limit_tpm * settings.paced_target_ratio
+                self.pacer = TokenBucket(target_tpm=target_tpm)
         # Checked before every pacer wait, before every model call, and during
         # every retry/backoff sleep. None means "never stops" (e.g. the probe).
         self.stop_event = stop_event
@@ -99,6 +113,44 @@ class ModelHarness:
         # sleeps — see WorkerInterrupted's docstring. Single-shot: consuming
         # it clears it, so only the call in flight when it fired is aborted.
         self.interrupt_event = interrupt_event
+
+    def update_budget(self, budget: Optional[Budget]) -> None:
+        """Called by the worker's poll loop on every tick with the freshly
+        resolved Budget. Creates the pacer on the fly if one didn't exist
+        yet (e.g. this worker started unbudgeted and an operator just
+        assigned one) and keeps its target in sync either way — same
+        "live re-target without resetting accumulated tokens" behavior
+        Phase 0/1 already had for the flat `limit_tpm` bridge, now driven
+        by the real Budget object.
+        """
+        self.budget = budget
+        if budget is not None and budget.tokens_per_minute is not None:
+            if self.pacer is None:
+                self.pacer = TokenBucket(target_tpm=budget.effective_tokens_per_minute)
+            else:
+                self.pacer.update_target(budget.effective_tokens_per_minute)
+
+    def _pacing_action(self) -> str:
+        """Decides, per call, whether to block on the pacer, run it in
+        shadow (measure-only) mode, or skip it entirely.
+
+        `client_bucket` enforcement only actually blocks in "paced" mode —
+        naive/runaway's whole point is ignoring the limit, and a Budget
+        shouldn't silently override that scenario. `shadow` enforcement
+        runs regardless of mode: it's specifically useful for measuring
+        how far a naive/runaway agent overshoots a budget it's deliberately
+        not obeying. See docs/phase-1-5-implementation-plan.md §Phase 2's
+        integration note for the full reasoning.
+        """
+        if self.pacer is None:
+            return "none"
+        if self.budget is None:
+            return "block" if self.mode == "paced" else "none"
+        if self.budget.enforcement == "off":
+            return "none"
+        if self.budget.enforcement == "shadow":
+            return "shadow"
+        return "block" if self.mode == "paced" else "none"
 
     def _should_stop(self) -> bool:
         return self.stop_event is not None and self.stop_event.is_set()
@@ -154,9 +206,14 @@ class ModelHarness:
 
         # 1. Pacing check — interruptible: a Stop click during a pacing wait
         # returns here without having consumed bucket capacity.
-        if self.mode == "paced" and self.pacer is not None:
+        shadow_wait_ms = 0
+        pacing_action = self._pacing_action()
+        if pacing_action == "block":
             await self.pacer.acquire(estimated_input_tokens, stop_event=self.stop_event)
             self._raise_if_stopped()
+        elif pacing_action == "shadow":
+            shadow_wait_s = await self.pacer.acquire(estimated_input_tokens, shadow=True)
+            shadow_wait_ms = int(shadow_wait_s * 1000)
 
         attempt = 0
         while attempt < max_attempts:
@@ -229,6 +286,7 @@ class ModelHarness:
                 latency_ms=latency_ms,
                 ratelimit_headers=rl_headers,
                 attempt=attempt,
+                shadow_queue_wait_ms=shadow_wait_ms,
             )
             await telemetry.emit(event)
 
@@ -270,9 +328,14 @@ class ModelHarness:
         self._raise_if_stopped()
         self._raise_if_interrupted()
 
-        if self.mode == "paced" and self.pacer is not None:
+        shadow_wait_ms = 0
+        pacing_action = self._pacing_action()
+        if pacing_action == "block":
             await self.pacer.acquire(estimated_input_tokens, stop_event=self.stop_event)
             self._raise_if_stopped()
+        elif pacing_action == "shadow":
+            shadow_wait_s = await self.pacer.acquire(estimated_input_tokens, shadow=True)
+            shadow_wait_ms = int(shadow_wait_s * 1000)
 
         base_url = settings.get_base_url()
 
@@ -355,6 +418,7 @@ class ModelHarness:
                 latency_ms=latency_ms,
                 ratelimit_headers=rl_headers,
                 attempt=1,
+                shadow_queue_wait_ms=shadow_wait_ms,
             )
             await telemetry.emit(event)
 

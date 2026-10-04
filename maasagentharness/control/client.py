@@ -8,6 +8,7 @@ from typing import Optional
 
 import httpx
 
+from maasagentharness.control.budgets import Budget
 from maasagentharness.control.models import DesiredStateResponse
 
 
@@ -60,6 +61,24 @@ class ControlClient:
             except Exception:
                 pass  # dashboard unreachable — treat as unregistered/stopped, never as "running"
         return DesiredStateResponse(unregistered=True)
+
+    async def get_resolved_budget(self) -> Optional[Budget]:
+        """Fetches the full resolved Budget — not just its `tokens_per_minute`
+        (which `get_desired` already carries for the pacer-target hot path),
+        but `enforcement` too, which is what lets `ModelHarness.update_budget`
+        decide block vs. shadow vs. none. A second request per poll tick;
+        acceptable at a once-a-second cadence for a testing harness. Returns
+        None if the dashboard is unreachable or the worker is unregistered —
+        callers should treat that the same as "no budget configured".
+        """
+        async with httpx.AsyncClient(timeout=1.5, transport=self.transport) as client:
+            try:
+                resp = await client.get(f"{self.base}/api/workers/{self.worker_id}/budget")
+                if resp.status_code == 200:
+                    return Budget(**resp.json())
+            except Exception:
+                pass
+        return None
 
     async def heartbeat(
         self,
