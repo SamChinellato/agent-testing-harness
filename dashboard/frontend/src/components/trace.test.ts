@@ -37,7 +37,7 @@ describe('buildLimits', () => {
     const limits = buildLimits(makeSnapshot([a, b, own]), { a: 0, b: 1, c: 2 });
     expect(limits).toHaveLength(2);
     const teamLimit = limits.find((l) => l.key === 'team:banking-ops')!;
-    expect(teamLimit.label).toBe('Team banking-ops limit');
+    expect(teamLimit.label).toBe('Team limit');
     expect(teamLimit.value).toBe(2700);
     expect(limits.find((l) => l.key === 'worker:c')!.label).toBe('c limit');
   });

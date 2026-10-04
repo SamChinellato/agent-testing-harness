@@ -10,61 +10,29 @@ Run it with `uv run dashboard`, then open http://localhost:8000.
 
 ## Layout
 
-From top to bottom:
-
-1. **Readouts.** Four figures for the whole fleet: tokens per minute, throttled calls in the
-   last minute (with the share of calls), workers running, and dropped iterations. Dropped
-   iterations are offered load that the system could not take in time.
-2. **Throughput against each limit.** The one chart that matters. Each worker is a line, the
-   fleet total is a neutral line, and each limit is a dashed line. Red ticks along the bottom mark
-   throttled calls. Lines are labelled at their ends. Hover for values at any point in the last
-   minute.
-3. **Workers.** One row per worker, with its status, its rate, the latest step, a 60-second trace,
-   and its controls. Shared limits sit above the rows, once each.
-4. **Scenarios** (right column). Scenario files from the `scenarios/` folder, each checked when
-   the page loads. Launch one to start its workers.
-5. **Model calls** (right column). The most recent calls, newest first. Throttled calls are
-   marked in red.
-
----
+- **Top.** The name, a connection label, and **Stop all**.
+- **Readouts.** Tokens per minute, throttled calls, running workers, dropped iterations.
+- **Trace.** Each worker as a line, the fleet total, and each limit as a dashed line. Red ticks mark
+  throttled calls. Hover for values.
+- **Workers.** One row each: name, status, rate, a 60-second trace, **Start/Stop**, and a menu (⋮).
+- **Right side.** Scenario files to launch, and the most recent calls.
 
 ## Worker rows
 
-| Element | Meaning |
-|---|---|
-| Status | **Running**, **Stopped**, **Stopping**, **Starting**, **Applying**, **No heartbeat**, **Lost**, or **Error**. Each has its own shape, so colour is never the only signal. **Applying** means a command was sent and the worker has not confirmed it yet. |
-| Throttled | Shown while the worker has been throttled in the last minute. |
-| Rate | Tokens per minute over the last 60 seconds. For a worker on a shared limit this is its own share. |
-| Latest step | The last model call's step, status and latency. |
-| Trace | The same 60 seconds as the chart. Red ticks are throttled buckets. |
+The menu (⋮) holds the rest: **Limit**, the three modes, **Interrupt**, **Kill process** (only for
+processes the dashboard started) and **Forget** (only for stopped or lost workers).
 
-**Controls**
+**Limit** opens a small form:
 
-- **Start / Stop.** Changes whether the worker runs. The status changes to *Applying* until the
-  worker confirms the change.
-- **Interrupt.** Cuts short the call the worker is making now. The worker keeps running.
-- **Mode.** *Naive retry* retries at once. *Paced* obeys the limit. *Ignores limits* sends as
-  fast as it can.
-- **Budget.** Opens the budget editor in place (see below).
-- **Kill process** appears only for workers the dashboard started itself.
-- **Forget** removes a stopped or lost worker from the list.
+- **Tokens per minute.**
+- **Applies to.** This worker, the worker's team, or everyone.
+- **When reached.** *Enforce*, *Measure only*, or *Off*.
 
----
+**Save** applies the change. **Revert** puts back the saved values. If the server refuses, the reason
+appears under the row and your values stay in the form.
 
-## Budgets
-
-Click **Budget** on a row to open the editor. It works on a draft. Nothing changes until you
-click **Apply budget**, and **Revert** puts back the saved values.
-
-- **Applies to.** *This worker only* creates an override for this worker. *Everyone in team X* and
-  *Everyone (global)* change the shared limit, and the editor says how many other workers that
-  reaches before you apply.
-- **Tokens per minute** and **headroom**. The effective limit is shown as you type, after headroom.
-- **When the limit is reached.** *Pace requests in paced mode* enforces the limit only for paced
-  workers, which is what you want for most tests. *Measure only, never delay* records how far over
-  the limit a worker would have gone, without slowing it. *No limit* turns the limit off.
-
-If the server refuses a change, the editor says why and keeps your draft.
+Status shows as a label: **Running**, **Stopped**, **Applying** (a change has been sent and not yet
+confirmed), **Lost** and similar. Colour is never the only signal.
 
 ---
 

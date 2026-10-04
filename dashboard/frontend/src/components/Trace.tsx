@@ -35,7 +35,7 @@ export function buildLimits(snapshot: Snapshot, colorSlots: Record<string, numbe
     const shared = b.shared_by > 1;
     seen.set(b.budget_id, {
       key: b.budget_id,
-      label: shared ? `${b.scope === 'global' ? 'Global' : `Team ${w.team}`} limit` : `${w.display_name} limit`,
+      label: shared ? (b.scope === 'global' ? 'Global limit' : 'Team limit') : `${w.display_name} limit`,
       value: b.effective_tokens_per_minute,
       colour: shared ? 'var(--ink-2)' : colourFor(colorSlots[w.worker_id]),
     });
@@ -111,7 +111,7 @@ export function Trace({ snapshot, colorSlots }: { snapshot: Snapshot; colorSlots
 
   const lines = buildLines(snapshot, colorSlots);
   const buckets = snapshot.buckets;
-  const height = 240;
+  const height = 264;
   // Narrow screens get a smaller label gutter and shorter names, so the plot keeps its width.
   const narrow = width < 560;
   const pad = {
@@ -146,7 +146,8 @@ export function Trace({ snapshot, colorSlots }: { snapshot: Snapshot; colorSlots
   const ticks = [0, 0.25, 0.5, 0.75, 1].map((f) => f * yMax);
   const lastIdx = buckets.length - 1;
   const endY = lines.map((l) => y(l.values[lastIdx] ?? 0));
-  const labelYs = spreadLabels(endY, 16);
+  const labelYs = spreadLabels(endY, 18);
+  const limitLabelYs = spreadLabels(limits.map((l) => y(l.value) - 6), 14);
   const endLabels = lines.map((l, i) => ({
     key: l.key,
     name: l.name,
@@ -193,11 +194,11 @@ export function Trace({ snapshot, colorSlots }: { snapshot: Snapshot; colorSlots
         )}
 
         {/* Budget ceilings: dashed, in the worker's own colour, so each line reads against its own limit. */}
-        {limits.map((l) => (
+        {limits.map((l, i) => (
           <g key={`limit-${l.key}`}>
             <line x1={pad.left} x2={width - pad.right} y1={y(l.value)} y2={y(l.value)} stroke={l.colour} strokeWidth="1.25" strokeDasharray="5 4" />
-            <text x={pad.left + 6} y={y(l.value) - 6} fontSize="12" fill="var(--ink-2)">
-              {l.label} · {count(l.value)}
+            <text x={pad.left + 6 + i * 0} y={limitLabelYs[i]} fontSize="12" fill="var(--ink-2)">
+              {l.label} {count(l.value)}
             </text>
           </g>
         ))}

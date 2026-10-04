@@ -1,238 +1,163 @@
 import { useEffect, useState } from 'react';
+import { Button, Form, FormGroup, FormSelect, FormSelectOption, Radio, TextInput } from '@patternfly/react-core';
 import { api, ApiError } from '../api/client';
-import type { BudgetView, Enforcement, Snapshot, WorkerSnapshot } from '../api/types';
-import { count } from '../format';
+import type { Enforcement, Snapshot, WorkerSnapshot } from '../api/types';
+import { ENFORCEMENT_TEXT } from './status';
 
 type ScopeChoice = 'worker' | 'team' | 'global';
-
-const ENFORCEMENT_LABEL: Record<Enforcement, string> = {
-  client_bucket: 'Pace requests in paced mode',
-  shadow: 'Measure only, never delay',
-  off: 'No limit',
-};
 
 interface Draft {
   scope: ScopeChoice;
   tokens: string;
-  headroom: string;
   enforcement: Enforcement;
 }
 
-function initialDraft(w: WorkerSnapshot): Draft {
+function fromWorker(w: WorkerSnapshot): Draft {
   const scope: ScopeChoice =
     w.budget.resolved_via === 'worker_assignment' ? 'worker' : w.budget.resolved_via === 'team' ? 'team' : 'global';
   return {
     scope,
     tokens: w.budget.tokens_per_minute === null ? '' : String(w.budget.tokens_per_minute),
-    headroom: String(Math.round((w.budget.effective_tokens_per_minute !== null && w.budget.tokens_per_minute
-      ? (w.budget.effective_tokens_per_minute / w.budget.tokens_per_minute) : 0.9) * 100)),
     enforcement: w.budget.enforcement,
   };
 }
 
-const sameDraft = (a: Draft, b: Draft) =>
-  a.scope === b.scope && a.tokens === b.tokens && a.headroom === b.headroom && a.enforcement === b.enforcement;
+const same = (a: Draft, b: Draft) => a.scope === b.scope && a.tokens === b.tokens && a.enforcement === b.enforcement;
 
-/** Who a change reaches, stated before the user applies it. */
+/** Workers a team or global change reaches (those without their own assignment). */
 function reach(snapshot: Snapshot, w: WorkerSnapshot, scope: ScopeChoice): number {
   if (scope === 'worker') return 0;
-  return snapshot.workers.filter((o) => {
-    if (o.worker_id === w.worker_id) return false;
-    if (o.desired.budget_id) return false; // has its own assignment, unaffected
-    return scope === 'global' || o.team === w.team;
-  }).length;
+  return snapshot.workers.filter(
+    (o) => o.worker_id !== w.worker_id && !o.desired.budget_id && (scope === 'global' || o.team === w.team),
+  ).length;
 }
 
-export function BudgetEditor({ worker, snapshot, open }: { worker: WorkerSnapshot; snapshot: Snapshot; open: boolean }) {
-  // Keyed on the values, not the object, so a new snapshot with the same
-  // numbers doesn't reset the form (that would briefly show stale values
-  // right after an apply, before the server catches up).
-  const baseline = initialDraft(worker);
-  const baselineKey = JSON.stringify(baseline);
-  const [draft, setDraft] = useState<Draft>(baseline);
-  const [saved, setSaved] = useState<Draft>(baseline);
+function globalId(snapshot: Snapshot): string {
+  return snapshot.budgets.find((b) => b.scope === 'global')?.budget_id ?? 'global-default';
+}
+
+export function BudgetEditor({ worker, snapshot }: { worker: WorkerSnapshot; snapshot: Snapshot }) {
+  const next = fromWorker(worker);
+  const nextKey = JSON.stringify(next);
+  const [draft, setDraft] = useState<Draft>(next);
+  const [saved, setSaved] = useState<Draft>(next);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  // Live updates arrive every tick. They replace the form only when the user
-  // hasn't edited it, so a draft is never overwritten.
+  // Adopt the server's values only when the form is clean, so a live update never overwrites an edit.
   useEffect(() => {
-    if (sameDraft(draft, saved)) {
-      setDraft(JSON.parse(baselineKey) as Draft);
-      setSaved(JSON.parse(baselineKey) as Draft);
+    if (same(draft, saved)) {
+      const fresh = JSON.parse(nextKey) as Draft;
+      setDraft(fresh);
+      setSaved(fresh);
     }
-  }, [baselineKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [nextKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const dirty = !sameDraft(draft, saved);
+  const dirty = !same(draft, saved);
   const tokens = Number(draft.tokens);
-  const headroom = Number(draft.headroom);
-  const validTokens = Number.isInteger(tokens) && tokens >= 1;
-  const validHeadroom = headroom >= 10 && headroom <= 100;
-  const effective = validTokens && validHeadroom ? tokens * (headroom / 100) : null;
+  const valid = Number.isInteger(tokens) && tokens >= 1;
   const affected = reach(snapshot, worker, draft.scope);
-  const teamLabel = worker.team;
+  const headroom = worker.budget.tokens_per_minute
+    ? (worker.budget.effective_tokens_per_minute ?? 0) / worker.budget.tokens_per_minute
+    : 0.9;
 
   async function apply() {
     setError(null);
     setNotice(null);
-    if (!validTokens) return setError('Tokens per minute must be a whole number, 1 or more.');
-    if (!validHeadroom) return setError('Headroom must be between 10% and 100%.');
-
-    const scope = draft.scope;
-    const budgetId =
-      scope === 'worker' ? `worker:${worker.worker_id}` : scope === 'team' ? `team:${teamLabel}` : globalId(snapshot);
+    if (!valid) {
+      setError('Enter a whole number, 1 or more.');
+      return;
+    }
+    const { scope } = draft;
+    const budgetId = scope === 'worker' ? `worker:${worker.worker_id}` : scope === 'team' ? `team:${worker.team}` : globalId(snapshot);
     setBusy(true);
     try {
       await api.putBudget(budgetId, {
-        scope: scope === 'global' ? 'global' : scope,
-        scope_ref: scope === 'worker' ? worker.worker_id : scope === 'team' ? teamLabel : null,
+        scope,
+        scope_ref: scope === 'worker' ? worker.worker_id : scope === 'team' ? worker.team : null,
         tokens_per_minute: tokens,
         requests_per_minute: null,
         max_concurrency: null,
-        headroom: headroom / 100,
+        headroom,
         enforcement: draft.enforcement,
       });
-      // A worker-scoped budget is assigned to this worker. Team and global
-      // budgets are reached by clearing the assignment.
       await api.assignBudget(worker.worker_id, scope === 'worker' ? budgetId : '');
       setSaved(draft);
-      setNotice(
-        scope === 'team' && affected > 0
-          ? `Applied. This also changes ${affected} other worker${affected === 1 ? '' : 's'} in team ${teamLabel}.`
-          : scope === 'global' && affected > 0
-            ? `Applied. This also changes ${affected} other worker${affected === 1 ? '' : 's'}.`
-            : 'Budget applied.',
-      );
+      setNotice(affected > 0 ? `Saved. Also affects ${affected} other worker${affected === 1 ? '' : 's'}.` : 'Saved.');
     } catch (e) {
-      setError(`Couldn't apply the budget: ${e instanceof ApiError ? e.message : String(e)}. Your changes are still here.`);
+      setError(e instanceof ApiError ? e.message : String(e));
     } finally {
       setBusy(false);
     }
   }
 
-  function revert() {
-    setDraft(saved);
-    setError(null);
-    setNotice(null);
-  }
+  const scopes: [ScopeChoice, string][] = [
+    ['worker', 'This worker'],
+    ['team', `Team ${worker.team}`],
+    ['global', 'Everyone'],
+  ];
 
   return (
-    // A collapsed editor is removed from the accessibility tree and the tab order.
-    <div className="editor-wrap" data-open={open ? 'true' : 'false'} inert={!open}>
-      <div className="editor-wrap__inner" style={{ minHeight: 0, overflow: 'hidden' }}>
-        <form
-          className="editor"
-          aria-label={`Budget for ${worker.display_name}`}
-          onSubmit={(e) => {
-            e.preventDefault();
-            void apply();
-          }}
+    <Form
+      className="budget-form"
+      onSubmit={(e) => {
+        e.preventDefault();
+        void apply();
+      }}
+      aria-label={`Limit for ${worker.display_name}`}
+    >
+      <FormGroup label="Tokens per minute" fieldId={`tpm-${worker.worker_id}`}>
+        <TextInput
+          id={`tpm-${worker.worker_id}`}
+          inputMode="numeric"
+          value={draft.tokens}
+          validated={valid || draft.tokens === '' ? 'default' : 'error'}
+          onChange={(_e, value) => setDraft({ ...draft, tokens: value.replace(/[^0-9]/g, '') })}
+        />
+      </FormGroup>
+
+      <FormGroup label="Applies to" role="radiogroup" isInline={false}>
+        <div className="budget-form__radios">
+          {scopes.map(([value, text]) => (
+            <Radio
+              key={value}
+              id={`scope-${worker.worker_id}-${value}`}
+              name={`scope-${worker.worker_id}`}
+              label={text}
+              isChecked={draft.scope === value}
+              onChange={() => setDraft({ ...draft, scope: value })}
+            />
+          ))}
+        </div>
+      </FormGroup>
+
+      <FormGroup label="When reached" fieldId={`enf-${worker.worker_id}`}>
+        <FormSelect
+          id={`enf-${worker.worker_id}`}
+          value={draft.enforcement}
+          onChange={(_e, value) => setDraft({ ...draft, enforcement: value as Enforcement })}
         >
-          <div className="editor__grid">
-            <fieldset className="scope" style={{ border: 0, padding: 0, margin: 0 }}>
-              <legend className="field__label" style={{ marginBottom: 6 }}>
-                Applies to
-              </legend>
-              {(
-                [
-                  ['worker', 'This worker only'],
-                  ['team', `Everyone in team ${teamLabel}`],
-                  ['global', 'Everyone (global)'],
-                ] as const
-              ).map(([value, text]) => (
-                <label key={value}>
-                  <input
-                    type="radio"
-                    name={`scope-${worker.worker_id}`}
-                    value={value}
-                    checked={draft.scope === value}
-                    onChange={() => setDraft({ ...draft, scope: value })}
-                  />
-                  {text}
-                </label>
-              ))}
-            </fieldset>
+          {(Object.keys(ENFORCEMENT_TEXT) as Enforcement[]).map((k) => (
+            <FormSelectOption key={k} value={k} label={ENFORCEMENT_TEXT[k]} />
+          ))}
+        </FormSelect>
+      </FormGroup>
 
-            <div className="field">
-              <label className="field__label" htmlFor={`tpm-${worker.worker_id}`}>
-                Tokens per minute
-              </label>
-              <input
-                id={`tpm-${worker.worker_id}`}
-                inputMode="numeric"
-                value={draft.tokens}
-                onChange={(e) => setDraft({ ...draft, tokens: e.target.value.replace(/[^0-9]/g, '') })}
-                aria-invalid={!validTokens}
-              />
-              <label className="field__label" htmlFor={`headroom-${worker.worker_id}`}>
-                Headroom, % of the limit to use
-              </label>
-              <input
-                id={`headroom-${worker.worker_id}`}
-                inputMode="numeric"
-                value={draft.headroom}
-                onChange={(e) => setDraft({ ...draft, headroom: e.target.value.replace(/[^0-9]/g, '') })}
-                aria-invalid={!validHeadroom}
-              />
-              <div className="editor__effective">
-                {effective === null
-                  ? 'Enter a rate to see the effective limit.'
-                  : `Effective limit: ${count(effective)} per minute.`}
-              </div>
-            </div>
-
-            <div className="field">
-              <label className="field__label" htmlFor={`enf-${worker.worker_id}`}>
-                When the limit is reached
-              </label>
-              <select
-                id={`enf-${worker.worker_id}`}
-                value={draft.enforcement}
-                onChange={(e) => setDraft({ ...draft, enforcement: e.target.value as Enforcement })}
-              >
-                {(Object.keys(ENFORCEMENT_LABEL) as Enforcement[]).map((k) => (
-                  <option key={k} value={k}>
-                    {ENFORCEMENT_LABEL[k]}
-                  </option>
-                ))}
-              </select>
-              <span className="field__hint">
-                {draft.scope === 'worker'
-                  ? 'Changes only this worker.'
-                  : affected > 0
-                    ? `Changes ${affected} other worker${affected === 1 ? '' : 's'} that use this budget.`
-                    : 'No other workers use this budget yet.'}
-              </span>
-            </div>
-          </div>
-
-          <div className="editor__actions">
-            <button type="submit" className="button button--action" disabled={!dirty || busy}>
-              {busy ? 'Applying…' : 'Apply budget'}
-            </button>
-            <button type="button" className="button" onClick={revert} disabled={!dirty || busy}>
-              Revert
-            </button>
-            <span className="editor__dirty">{dirty ? 'Unsaved changes' : 'Up to date'}</span>
-          </div>
-          {error && (
-            <p className="form-error" role="alert">
-              {error}
-            </p>
-          )}
-          {notice && !error && (
-            <p className="notice" data-tone="ok" role="status">
-              {notice}
-            </p>
-          )}
-        </form>
+      <div className="budget-form__actions">
+        <Button variant="secondary" isDisabled={!dirty || busy} onClick={() => { setDraft(saved); setError(null); setNotice(null); }}>
+          Revert
+        </Button>
+        <Button type="submit" variant="primary" isDisabled={!dirty || busy || !valid}>
+          {busy ? 'Saving…' : 'Save'}
+        </Button>
       </div>
-    </div>
-  );
-}
 
-function globalId(snapshot: Snapshot): string {
-  const g = snapshot.budgets.find((b: BudgetView) => b.scope === 'global');
-  return g ? g.budget_id : 'global-default';
+      {(error || notice) && (
+        <p className="worker__message" role={error ? 'alert' : 'status'} style={{ color: error ? 'var(--throttle)' : 'var(--ink-2)', gridColumn: '1 / -1', margin: 0 }}>
+          {error ?? notice}
+        </p>
+      )}
+    </Form>
+  );
 }

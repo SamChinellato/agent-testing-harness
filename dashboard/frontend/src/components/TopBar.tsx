@@ -1,13 +1,14 @@
 import { useState } from 'react';
+import { Button, Label } from '@patternfly/react-core';
 import { api, ApiError } from '../api/client';
 import type { Snapshot } from '../api/types';
 import { useLive, type Connection } from '../state/store';
 
-const CONNECTION_TEXT: Record<Connection, string> = {
-  connecting: 'Connecting',
-  live: 'Live',
-  reconnecting: 'Reconnecting…',
-  offline: 'Offline. Last update was over 5 seconds ago.',
+const CONNECTION: Record<Connection, { text: string; colour: 'green' | 'orange' | 'red' | 'grey' }> = {
+  connecting: { text: 'Connecting', colour: 'grey' },
+  live: { text: 'Live', colour: 'green' },
+  reconnecting: { text: 'Reconnecting', colour: 'orange' },
+  offline: { text: 'Offline', colour: 'red' },
 };
 
 export function TopBar({ snapshot }: { snapshot: Snapshot | null }) {
@@ -15,35 +16,33 @@ export function TopBar({ snapshot }: { snapshot: Snapshot | null }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const running = snapshot?.workers.filter((w) => w.desired.state === 'running') ?? [];
+  const link = CONNECTION[connection];
 
   async function stopAll() {
     setBusy(true);
     setError(null);
     const results = await Promise.allSettled(running.map((w) => api.setState(w.worker_id, 'stopped')));
-    const failed = results.filter((r) => r.status === 'rejected');
+    const failed = results.filter((r): r is PromiseRejectedResult => r.status === 'rejected');
     if (failed.length > 0) {
-      const first = failed[0] as PromiseRejectedResult;
-      setError(`Couldn't stop ${failed.length} worker${failed.length === 1 ? '' : 's'}: ${first.reason instanceof ApiError ? first.reason.message : String(first.reason)}`);
+      const reason = failed[0].reason;
+      setError(`Couldn't stop ${failed.length}: ${reason instanceof ApiError ? reason.message : String(reason)}`);
     }
     setBusy(false);
   }
 
   return (
     <header className="topbar">
-      <div>
-        <h1 className="wordmark">Agent bench</h1>
-      </div>
+      <h1 className="wordmark">Agent bench</h1>
       <div className="topbar__right">
-        <span className="connection" data-state={connection} role="status" aria-live="polite">
-          <span className="connection__dot" aria-hidden="true" />
-          {CONNECTION_TEXT[connection]}
-        </span>
-        <button className="button" disabled={busy || running.length === 0} onClick={() => void stopAll()}>
-          Stop all{running.length > 0 ? ` (${running.length})` : ''}
-        </button>
+        <Label color={link.colour} isCompact role="status" aria-live="polite">
+          {link.text}
+        </Label>
+        <Button variant="secondary" isDisabled={busy || running.length === 0} onClick={() => void stopAll()}>
+          Stop all
+        </Button>
       </div>
       {error && (
-        <p className="form-error" role="alert" style={{ flexBasis: '100%' }}>
+        <p role="alert" className="form-error" style={{ flexBasis: '100%', margin: 0, color: 'var(--throttle)' }}>
           {error}
         </p>
       )}

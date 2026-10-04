@@ -1,5 +1,4 @@
-// A 60-second trace for one worker. Throttled buckets are marked on the
-// baseline, so a throttle reads as a tick in the trace, not a colour change.
+// A 60-second trace for one worker. Throttled buckets are ticks on the baseline.
 export function Sparkline({
   values,
   throttled,
@@ -12,7 +11,7 @@ export function Sparkline({
   label: string;
 }) {
   const width = 240;
-  const height = 40;
+  const height = 36;
   const top = 4;
   const base = height - 2;
   const max = Math.max(1, ...values);

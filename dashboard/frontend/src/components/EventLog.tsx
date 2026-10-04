@@ -1,49 +1,47 @@
+import { Label } from '@patternfly/react-core';
+import { Table, Tbody, Td, Th, Thead, Tr } from '@patternfly/react-table';
 import { useLive } from '../state/store';
 import { clock, count } from '../format';
 
-const VISIBLE = 200;
+const VISIBLE = 100;
 
 export function EventLog() {
   const events = useLive((s) => s.events);
   const rows = events.slice(-VISIBLE).reverse();
 
   if (rows.length === 0) {
-    return <p className="log__empty">No model calls yet. Each call appears here as it completes.</p>;
+    return <p className="empty">No calls yet.</p>;
   }
 
   return (
-    <div className="log" role="region" aria-label="Model calls, newest first" tabIndex={0}>
-      <table>
-        <thead>
-          <tr>
-            <th scope="col">Time</th>
-            <th scope="col">Worker</th>
-            <th scope="col">Step</th>
-            <th scope="col" className="num">Status</th>
-            <th scope="col" className="num">In / out</th>
-            <th scope="col" className="num">Latency</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="calls">
+      <Table aria-label="Recent calls" variant="compact" borders={false}>
+        <Thead>
+          <Tr>
+            <Th>Time</Th>
+            <Th>Worker</Th>
+            <Th>Status</Th>
+            <Th textCenter={false} modifier="fitContent">
+              ms
+            </Th>
+          </Tr>
+        </Thead>
+        <Tbody>
           {rows.map((e) => {
             const throttled = e.status === 429;
             return (
-              <tr key={e.seq} data-throttled={throttled ? 'true' : 'false'}>
-                <td>{clock(e.ts_ingest_ms)}</td>
-                <td>{e.user}</td>
-                <td>{e.node}</td>
-                <td className="num log__status" data-throttled={throttled ? 'true' : 'false'}>
-                  {throttled ? '429 throttled' : e.status}
-                </td>
-                <td className="num">
-                  {count(e.prompt_tokens)} / {count(e.completion_tokens)}
-                </td>
-                <td className="num">{count(e.latency_ms)} ms</td>
-              </tr>
+              <Tr key={e.seq} data-throttled={throttled ? 'true' : 'false'}>
+                <Td>{clock(e.ts_ingest_ms)}</Td>
+                <Td>{e.user}</Td>
+                <Td>
+                  {throttled ? <Label color="red" isCompact>Throttled</Label> : <span className="num">{e.status}</span>}
+                </Td>
+                <Td className="num">{count(e.latency_ms)}</Td>
+              </Tr>
             );
           })}
-        </tbody>
-      </table>
+        </Tbody>
+      </Table>
     </div>
   );
 }

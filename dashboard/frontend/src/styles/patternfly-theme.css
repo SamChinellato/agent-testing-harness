@@ -1,0 +1,86 @@
+/* PatternFly components, painted in this project's palette.
+ *
+ * PatternFly reads its colours from global design tokens. Each token here points
+ * at one of our own variables from tokens.css, so every PatternFly component
+ * follows the same light and dark values as the rest of the bench. Nothing in
+ * PatternFly's blue theme leaks through. */
+
+:root {
+  --pf-t--global--font--family--body: var(--font-ui);
+  --pf-t--global--font--family--heading: var(--font-ui);
+
+  --pf-t--global--background--color--primary--default: var(--surface-panel);
+  --pf-t--global--background--color--primary--hover: var(--surface-inset);
+  --pf-t--global--background--color--secondary--default: var(--surface-inset);
+  --pf-t--global--background--color--secondary--hover: var(--rule);
+  --pf-t--global--background--color--action--plain--default: transparent;
+  --pf-t--global--background--color--action--plain--hover: var(--surface-inset);
+
+  --pf-t--global--text--color--regular: var(--ink);
+  --pf-t--global--text--color--subtle: var(--ink-2);
+  --pf-t--global--text--color--on-brand--default: var(--action-ink);
+  --pf-t--global--text--color--brand--default: var(--ink);
+  --pf-t--global--text--color--brand--hover: var(--ink-2);
+
+  --pf-t--global--border--color--default: var(--rule);
+  --pf-t--global--border--color--hover: var(--rule-strong);
+  --pf-t--global--border--color--brand--default: var(--ink);
+
+  --pf-t--global--color--brand--default: var(--action);
+  --pf-t--global--color--brand--hover: var(--ink-2);
+
+  --pf-t--global--icon--color--regular: var(--ink-2);
+  --pf-t--global--icon--color--subtle: var(--ink-3);
+
+  --pf-t--global--color--status--success--default: var(--series-3);
+  --pf-t--global--color--status--warning--default: var(--pending);
+  --pf-t--global--color--status--danger--default: var(--throttle);
+  --pf-t--global--text--color--status--success--default: var(--series-3);
+  --pf-t--global--text--color--status--warning--default: var(--pending);
+  --pf-t--global--text--color--status--danger--default: var(--throttle);
+  --pf-t--global--icon--color--status--success--default: var(--series-3);
+  --pf-t--global--icon--color--status--warning--default: var(--pending);
+  --pf-t--global--icon--color--status--danger--default: var(--throttle);
+  --pf-t--global--border--color--status--success--default: var(--series-3);
+  --pf-t--global--border--color--status--warning--default: var(--pending);
+  --pf-t--global--border--color--status--danger--default: var(--throttle);
+}
+
+/* Labels (status pills): ink text on a light tint of the status colour, so they
+ * read in both themes. PatternFly sets its label colours on the same classes, so
+ * these overrides repeat the classes to win the cascade regardless of load order. */
+.pf-v6-c-label.pf-v6-c-label {
+  --pf-v6-c-label--Color: var(--ink);
+  --pf-v6-c-label--BackgroundColor: var(--surface-inset);
+  --pf-v6-c-label--BorderColor: transparent;
+}
+
+.pf-v6-c-label.pf-v6-c-label.pf-m-filled.pf-m-green {
+  --pf-v6-c-label--m-green--Color: var(--ink);
+  --pf-v6-c-label--m-green--BackgroundColor: color-mix(in srgb, var(--series-3) 26%, var(--surface-panel));
+  --pf-v6-c-label--m-green--BorderColor: transparent;
+}
+
+.pf-v6-c-label.pf-v6-c-label.pf-m-filled.pf-m-red {
+  --pf-v6-c-label--m-red--Color: var(--ink);
+  --pf-v6-c-label--m-red--BackgroundColor: color-mix(in srgb, var(--throttle) 26%, var(--surface-panel));
+  --pf-v6-c-label--m-red--BorderColor: transparent;
+}
+
+.pf-v6-c-label.pf-v6-c-label.pf-m-filled.pf-m-orange {
+  --pf-v6-c-label--m-orange--Color: var(--ink);
+  --pf-v6-c-label--m-orange--BackgroundColor: color-mix(in srgb, var(--pending) 30%, var(--surface-panel));
+  --pf-v6-c-label--m-orange--BorderColor: transparent;
+}
+
+.pf-v6-c-label.pf-v6-c-label.pf-m-filled.pf-m-blue {
+  --pf-v6-c-label--m-blue--Color: var(--ink);
+  --pf-v6-c-label--m-blue--BackgroundColor: color-mix(in srgb, var(--series-1) 26%, var(--surface-panel));
+  --pf-v6-c-label--m-blue--BorderColor: transparent;
+}
+
+.pf-v6-c-label.pf-v6-c-label.pf-m-filled.pf-m-grey {
+  --pf-v6-c-label--m-grey--Color: var(--ink-2);
+  --pf-v6-c-label--m-grey--BackgroundColor: var(--surface-inset);
+  --pf-v6-c-label--m-grey--BorderColor: transparent;
+}
