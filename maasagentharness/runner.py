@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -8,6 +9,7 @@ from maasagentharness.control.budgets import Budget
 from maasagentharness.control.client import ControlClient
 from maasagentharness.control.models import DesiredStateResponse, Phase
 from maasagentharness.harness import ModelHarness, WorkerInterrupted, WorkerStopped
+from maasagentharness.metrics.artifact import RunArtifact
 from maasagentharness.scenario.executors.base import ExecutorStats
 from maasagentharness.scenario.executors.factory import build_executor
 from maasagentharness.scenario.schema import ScenarioConfig
@@ -99,6 +101,8 @@ class AgentWorker:
         self._assistant_instance: Optional[AssistantAgent] = None
 
         self._poll_task: Optional[asyncio.Task] = None
+        self._artifact: Optional[RunArtifact] = None
+        self._live_executor = None
         self._load_corpus()
 
     @property
@@ -193,6 +197,7 @@ class AgentWorker:
                 iteration=self.iteration,
                 last_error=self.last_error,
                 applied_interrupt_token=self._last_seen_interrupt_token,
+                dropped_iterations_total=self._dropped_total(),
             )
             await asyncio.sleep(1.0)
 
@@ -318,8 +323,34 @@ class AgentWorker:
         finally:
             if self._poll_task is not None:
                 self._poll_task.cancel()
+            if self.harness is not None:
+                await self.harness.aclose()
 
-    async def run_scenario(self, scenario: ScenarioConfig) -> ExecutorStats:
+    def _dropped_total(self) -> int:
+        """Cumulative dropped iterations from the live executor, if one is running."""
+        stats = getattr(self._live_executor, "live_stats", None)
+        return stats.iterations_dropped if stats is not None else 0
+
+    async def _on_artifact_event(self, event: TelemetryEvent) -> None:
+        if self._artifact is not None:
+            self._artifact.record(event.model_dump())
+
+    async def _flush_artifact_loop(self) -> None:
+        """Rewrites summary.json every couple of seconds while the run is
+        live, so a crashed or killed run still leaves a recent summary."""
+        while True:
+            await asyncio.sleep(2.0)
+            if self._artifact is not None:
+                stats = getattr(self._live_executor, "live_stats", None)
+                self._artifact.write_summary(stats.model_dump() if stats else None, finished=False)
+
+    async def run_scenario(
+        self,
+        scenario: ScenarioConfig,
+        run_name: str = "adhoc",
+        scenario_name: Optional[str] = None,
+        runs_root: Optional[Path] = None,
+    ) -> ExecutorStats:
         """Phase 3: runs a declarative scenario — calibrated load generation
         via one of the executors in scenario/executors/, instead of
         `run_loop`'s fixed one-at-a-time cadence. Still registers,
@@ -329,13 +360,29 @@ class AgentWorker:
         stopped from it, it just self-drives for its configured load shape
         instead of waiting on a dashboard Start click. See
         docs/phase-1-5-implementation-plan.md §3.4.
+
+        Phase 4: also writes a run artifact (runs/<run>/<scenario>/<ts>/)
+        containing the scenario, every model call as JSONL, and a summary
+        rewritten periodically — see metrics/artifact.py.
         """
+        scenario_name = scenario_name or self.user_id
+        runs_root = runs_root or Path(os.getenv("HARNESS_RUNS_DIR", "runs"))
+
         print(f"[WORKER] Starting scenario run for user '{self.user_id}' (agent={scenario.agent}, "
               f"mode={scenario.mode}, executor={scenario.executor.kind})...", flush=True)
         self.phase = Phase.STARTING
         await self.control.register(agent=scenario.agent, mode=scenario.mode, managed=False)
         telemetry.add_listener(self._on_telemetry_event)
+        self._artifact = RunArtifact.create(
+            root=runs_root,
+            run_name=run_name,
+            scenario_name=scenario_name,
+            scenario_config=scenario.model_dump(mode="json"),
+            worker_id=self.user_id,
+        )
+        telemetry.add_listener(self._on_artifact_event)
         self._poll_task = asyncio.create_task(self._poll_and_heartbeat_loop())
+        flush_task = asyncio.create_task(self._flush_artifact_loop())
 
         # A scenario names its budget explicitly, bypassing team/global
         # fallback — resolve_budget's precedence is for dashboard-driven
@@ -366,6 +413,7 @@ class AgentWorker:
             await self._run_one_cycle(scenario.agent, scenario.mode)
 
         executor = build_executor(scenario.executor)
+        self._live_executor = executor
         try:
             stats = await executor.run(iteration_fn, self.stop_event)
         finally:
@@ -383,9 +431,19 @@ class AgentWorker:
                 iteration=self.iteration,
                 last_error=self.last_error,
                 applied_interrupt_token=self._last_seen_interrupt_token,
+                dropped_iterations_total=self._dropped_total(),
             )
+            flush_task.cancel()
             if self._poll_task is not None:
                 self._poll_task.cancel()
+            telemetry.remove_listener(self._on_artifact_event)
+            telemetry.remove_listener(self._on_telemetry_event)
+            self._artifact.write_summary(stats.model_dump(), finished=True)
+            self._artifact.close()
+            self._artifact = None
+            self._live_executor = None
+            if self.harness is not None:
+                await self.harness.aclose()
 
         print(
             f"[WORKER] Scenario run complete for '{self.user_id}': "

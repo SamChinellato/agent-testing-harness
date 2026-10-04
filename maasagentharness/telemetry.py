@@ -31,6 +31,14 @@ class TelemetryEvent(BaseModel):
     # pacer WOULD have delayed this call, measured without actually
     # delaying it. 0 whenever shadow accounting isn't active for this call.
     shadow_queue_wait_ms: int = 0
+    # Phase 4 — stamped by the dashboard on ingest (UTC epoch ms). Buckets
+    # and rates use this, never `ts`: the agent's clock is only trusted for
+    # measuring skew (redesign-spec.md finding #15).
+    ts_ingest_ms: int = 0
+    # Phase 4 — streaming calls only. `None` means "not applicable"
+    # (non-streamed call), which the metrics layer must keep distinct from 0.
+    ttft_ms: Optional[int] = None
+    itl_ms_mean: Optional[float] = None
 
 
 class TelemetryEmitter:
@@ -42,6 +50,10 @@ class TelemetryEmitter:
     def add_listener(self, callback) -> None:
         """Register a coroutine callback(event) called after every emit."""
         self._listeners.append(callback)
+
+    def remove_listener(self, callback) -> None:
+        if callback in self._listeners:
+            self._listeners.remove(callback)
 
     async def _get_client(self) -> httpx.AsyncClient:
         if self._http_client is None or self._http_client.is_closed:

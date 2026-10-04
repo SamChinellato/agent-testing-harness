@@ -99,3 +99,6 @@ harness_state.db-shm
 *.db
 *.db-wal
 *.db-shm
+
+# Phase 4 run artifacts (scenario runs write here by default)
+runs/

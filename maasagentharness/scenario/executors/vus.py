@@ -39,7 +39,7 @@ class ConstantVUs(Executor):
         self.duration_s = duration_s
 
     async def run(self, iteration_fn: IterationFn, stop_event: asyncio.Event) -> ExecutorStats:
-        stats = ExecutorStats()
+        stats = self.live_stats = ExecutorStats()
         start = time.monotonic()
         deadline = start + self.duration_s
 
@@ -72,7 +72,7 @@ class RampingVUs(Executor):
         self.stages = stages
 
     async def run(self, iteration_fn: IterationFn, stop_event: asyncio.Event) -> ExecutorStats:
-        stats = ExecutorStats()
+        stats = self.live_stats = ExecutorStats()
         start = time.monotonic()
         tasks: List[asyncio.Task] = []
         # Far-future deadline — stage duration governs each VU's loop

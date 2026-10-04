@@ -96,7 +96,7 @@ async def _run(run: RunConfig, only: Optional[str], dashboard_url: str) -> int:
         scenario = run.scenarios[name]
         worker_id = f"{run.run}-{name}"
         worker = AgentWorker(user_id=worker_id, team_id=run.run, dashboard_url=dashboard_url)
-        stats = await worker.run_scenario(scenario)
+        stats = await worker.run_scenario(scenario, run_name=run.run, scenario_name=name)
         return name, stats
 
     results = await asyncio.gather(*(run_one(n) for n in names))

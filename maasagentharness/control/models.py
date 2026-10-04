@@ -93,6 +93,11 @@ class HeartbeatRequest(BaseModel):
     # acted on so the API can tell "interrupt requested" apart from
     # "interrupt delivered".
     applied_interrupt_token: int = 0
+    # Phase 4: cumulative open-model iterations dropped by this worker's
+    # executor (see scenario/executors/arrival.py). Mirrored into the
+    # /metrics counter; the executor owns the count, the dashboard only
+    # records the latest value.
+    dropped_iterations_total: int = 0
 
 
 class HeartbeatResponse(BaseModel):

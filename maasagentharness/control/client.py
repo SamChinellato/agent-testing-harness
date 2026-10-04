@@ -114,6 +114,7 @@ class ControlClient:
         iteration: int,
         last_error: Optional[str],
         applied_interrupt_token: int = 0,
+        dropped_iterations_total: int = 0,
     ) -> Optional[float]:
         async with httpx.AsyncClient(timeout=1.5, transport=self.transport) as client:
             try:
@@ -126,6 +127,7 @@ class ControlClient:
                         "iteration": iteration,
                         "last_error": last_error,
                         "applied_interrupt_token": applied_interrupt_token,
+                        "dropped_iterations_total": dropped_iterations_total,
                     },
                 )
                 if resp.status_code == 200:

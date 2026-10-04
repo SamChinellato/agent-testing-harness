@@ -24,6 +24,7 @@ from maasagentharness.control.models import (
     WorkerRecord,
 )
 from maasagentharness.control.store import WorkerStore
+from maasagentharness.metrics.store import default_store
 from maasagentharness.control.supervisor import ManagedWorkerError, Supervisor
 
 router = APIRouter(prefix="/api/workers", tags=["workers"])
@@ -122,6 +123,7 @@ async def heartbeat(worker_id: str, hb: HeartbeatRequest, request: Request):
         team=existing.team if existing else "unknown",
         display_name=existing.display_name if existing else worker_id,
     )
+    default_store.set_dropped(worker_id, hb.dropped_iterations_total)
     return HeartbeatResponse(lease_expires_at=record.lease_expires_at or 0.0)
 
 

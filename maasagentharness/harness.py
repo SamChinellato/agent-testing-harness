@@ -113,6 +113,29 @@ class ModelHarness:
         # sleeps — see WorkerInterrupted's docstring. Single-shot: consuming
         # it clears it, so only the call in flight when it fired is aborted.
         self.interrupt_event = interrupt_event
+        # Phase 4 (redesign-spec.md finding #24): one persistent HTTP client
+        # per harness, reused across calls. Previously every call built a
+        # fresh AsyncClient, so every latency measurement included a fresh
+        # TCP+TLS handshake — unacceptable once latency numbers are the
+        # product. Created lazily; closed via aclose().
+        self._http_client: Optional[httpx.AsyncClient] = None
+
+    def _client(self) -> httpx.AsyncClient:
+        if self._http_client is None or self._http_client.is_closed:
+            self._http_client = httpx.AsyncClient(
+                timeout=60.0,
+                limits=httpx.Limits(
+                    max_connections=20,
+                    max_keepalive_connections=20,
+                    keepalive_expiry=30.0,
+                ),
+            )
+        return self._http_client
+
+    async def aclose(self) -> None:
+        if self._http_client is not None and not self._http_client.is_closed:
+            await self._http_client.aclose()
+        self._http_client = None
 
     def update_budget(self, budget: Optional[Budget]) -> None:
         """Called by the worker's poll loop on every tick with the freshly
@@ -230,34 +253,32 @@ class ModelHarness:
 
             try:
                 base_url = settings.get_base_url()
+                client = self._client()
+                payload = {
+                    "model": settings.model_name,
+                    "messages": messages_to_openai_payload(messages),
+                    "stream": False,
+                }
+                resp = await client.post(
+                    f"{base_url}/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {settings.maas_api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=payload,
+                )
+                status = resp.status_code
+                rl_headers = self._extract_ratelimit_headers(resp.headers)
 
-                # We use httpx AsyncClient to capture exact raw response headers and status codes
-                async with httpx.AsyncClient(timeout=60.0) as client:
-                    payload = {
-                        "model": settings.model_name,
-                        "messages": messages_to_openai_payload(messages),
-                        "stream": False,
-                    }
-                    resp = await client.post(
-                        f"{base_url}/chat/completions",
-                        headers={
-                            "Authorization": f"Bearer {settings.maas_api_key}",
-                            "Content-Type": "application/json",
-                        },
-                        json=payload,
-                    )
-                    status = resp.status_code
-                    rl_headers = self._extract_ratelimit_headers(resp.headers)
+                if resp.status_code == 429:
+                    raise RateLimitExceeded("429 Too Many Requests", rl_headers)
+                resp.raise_for_status()
 
-                    if resp.status_code == 429:
-                        raise RateLimitExceeded("429 Too Many Requests", rl_headers)
-                    resp.raise_for_status()
-
-                    data = resp.json()
-                    usage = data.get("usage", {})
-                    prompt_tokens = usage.get("prompt_tokens", 0)
-                    completion_tokens = usage.get("completion_tokens", 0)
-                    response = data["choices"][0]["message"]["content"]
+                data = resp.json()
+                usage = data.get("usage", {})
+                prompt_tokens = usage.get("prompt_tokens", 0)
+                completion_tokens = usage.get("completion_tokens", 0)
+                response = data["choices"][0]["message"]["content"]
 
             except RateLimitExceeded as e:
                 status = 429
@@ -272,7 +293,9 @@ class ModelHarness:
 
             latency_ms = int((time.monotonic() - start_time) * 1000)
 
-            # Emit telemetry
+            # Emit telemetry. TTFT/ITL stay None: a non-streamed call has no
+            # first-token moment, and the metrics layer must keep "not
+            # applicable" distinct from zero.
             event = TelemetryEvent(
                 user=self.user_id,
                 team=self.team_id,
@@ -324,7 +347,15 @@ class ModelHarness:
         run_id: str,
         estimated_input_tokens: int = 500,
     ) -> AsyncIterator[str]:
-        """Execute streamed LLM call with token accounting and telemetry."""
+        """Execute streamed LLM call with token accounting, TTFT/ITL capture,
+        and telemetry.
+
+        TTFT is measured from request start to the first content chunk
+        parsed here. ITL is the mean gap between consecutive content chunks.
+        Both are measured at this generator's boundary, so consumer-side
+        delay between yields is included in ITL — acceptable for a load
+        harness, and noted in docs/phase-1-5-implementation-plan.md §4.3.
+        """
         self._raise_if_stopped()
         self._raise_if_interrupted()
 
@@ -344,88 +375,97 @@ class ModelHarness:
         prompt_tokens = 0
         completion_tokens = 0
         rl_headers = {}
-        full_content = []
+        full_content: List[str] = []
+        chunk_times: List[float] = []
         error_obj: Optional[BaseException] = None
 
-        async with httpx.AsyncClient(timeout=60.0) as client:
-            payload = {
-                "model": settings.model_name,
-                "messages": messages_to_openai_payload(messages),
-                "stream": True,
-                "stream_options": {"include_usage": True},
-            }
-            try:
-                async with client.stream(
-                    "POST",
-                    f"{base_url}/chat/completions",
-                    headers={
-                        "Authorization": f"Bearer {settings.maas_api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json=payload,
-                ) as resp:
-                    status = resp.status_code
-                    rl_headers = self._extract_ratelimit_headers(resp.headers)
-                    if resp.status_code == 429:
-                        raise RateLimitExceeded("429 Too Many Requests", rl_headers)
-                    resp.raise_for_status()
+        client = self._client()
+        payload = {
+            "model": settings.model_name,
+            "messages": messages_to_openai_payload(messages),
+            "stream": True,
+            "stream_options": {"include_usage": True},
+        }
+        try:
+            async with client.stream(
+                "POST",
+                f"{base_url}/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {settings.maas_api_key}",
+                    "Content-Type": "application/json",
+                },
+                json=payload,
+            ) as resp:
+                status = resp.status_code
+                rl_headers = self._extract_ratelimit_headers(resp.headers)
+                if resp.status_code == 429:
+                    raise RateLimitExceeded("429 Too Many Requests", rl_headers)
+                resp.raise_for_status()
 
-                    async for line in resp.aiter_lines():
-                        if not line or not line.startswith("data: "):
-                            continue
-                        data_str = line[6:].strip()
-                        if data_str == "[DONE]":
-                            break
-                        try:
-                            chunk = json.loads(data_str)
-                            if "usage" in chunk and chunk["usage"]:
-                                prompt_tokens = chunk["usage"].get("prompt_tokens", prompt_tokens)
-                                completion_tokens = chunk["usage"].get("completion_tokens", completion_tokens)
-                            if "choices" in chunk and chunk["choices"]:
-                                delta = chunk["choices"][0].get("delta", {})
-                                content = delta.get("content", "")
-                                if content:
-                                    full_content.append(content)
-                                    yield content
-                        except json.JSONDecodeError:
-                            continue
+                async for line in resp.aiter_lines():
+                    if not line or not line.startswith("data: "):
+                        continue
+                    data_str = line[6:].strip()
+                    if data_str == "[DONE]":
+                        break
+                    try:
+                        chunk = json.loads(data_str)
+                    except json.JSONDecodeError:
+                        continue
+                    if "usage" in chunk and chunk["usage"]:
+                        prompt_tokens = chunk["usage"].get("prompt_tokens", prompt_tokens)
+                        completion_tokens = chunk["usage"].get("completion_tokens", completion_tokens)
+                    if "choices" in chunk and chunk["choices"]:
+                        delta = chunk["choices"][0].get("delta", {})
+                        content = delta.get("content", "")
+                        if content:
+                            chunk_times.append(time.monotonic())
+                            full_content.append(content)
+                            yield content
 
-            except RateLimitExceeded as e:
-                status = 429
-                error_obj = e
-            except Exception as e:
-                status = 500
-                error_obj = e
+        except RateLimitExceeded as e:
+            status = 429
+            error_obj = e
+        except Exception as e:
+            status = 500
+            error_obj = e
 
-            latency_ms = int((time.monotonic() - start_time) * 1000)
+        latency_ms = int((time.monotonic() - start_time) * 1000)
 
-            # If usage wasn't returned in stream, estimate completion tokens roughly from content
-            if completion_tokens == 0 and full_content:
-                completion_tokens = max(1, len("".join(full_content)) // 4)
-            if prompt_tokens == 0:
-                prompt_tokens = estimated_input_tokens
+        ttft_ms: Optional[int] = None
+        if chunk_times and status == 200:
+            ttft_ms = int((chunk_times[0] - start_time) * 1000)
+        itl_ms_mean: Optional[float] = None
+        if len(chunk_times) >= 2:
+            gaps = [b - a for a, b in zip(chunk_times, chunk_times[1:])]
+            itl_ms_mean = round(sum(gaps) / len(gaps) * 1000, 2)
 
-            event = TelemetryEvent(
-                user=self.user_id,
-                team=self.team_id,
-                agent=self.agent_name,
-                mode=self.mode,
-                run_id=run_id,
-                node=node_name,
-                status=status,
-                prompt_tokens=prompt_tokens if status == 200 else 0,
-                completion_tokens=completion_tokens if status == 200 else 0,
-                latency_ms=latency_ms,
-                ratelimit_headers=rl_headers,
-                attempt=1,
-                shadow_queue_wait_ms=shadow_wait_ms,
-            )
-            await telemetry.emit(event)
+        # If usage wasn't returned in stream, estimate completion tokens roughly from content
+        if completion_tokens == 0 and full_content:
+            completion_tokens = max(1, len("".join(full_content)) // 4)
+        if prompt_tokens == 0:
+            prompt_tokens = estimated_input_tokens
 
-            # Phase 0 fix #0.6: previously this swallowed every exception and
-            # just ended the generator, so callers (e.g. AssistantAgent's
-            # `except RateLimitExceeded`) never saw a throttled/failed stream —
-            # it looked identical to a successful empty response. Re-raise so
-            # the caller can react.
-            if error_obj is not None:
-                raise error_obj
+        event = TelemetryEvent(
+            user=self.user_id,
+            team=self.team_id,
+            agent=self.agent_name,
+            mode=self.mode,
+            run_id=run_id,
+            node=node_name,
+            status=status,
+            prompt_tokens=prompt_tokens if status == 200 else 0,
+            completion_tokens=completion_tokens if status == 200 else 0,
+            latency_ms=latency_ms,
+            ratelimit_headers=rl_headers,
+            attempt=1,
+            shadow_queue_wait_ms=shadow_wait_ms,
+            ttft_ms=ttft_ms,
+            itl_ms_mean=itl_ms_mean,
+        )
+        await telemetry.emit(event)
+
+        # Phase 0 fix #0.6: re-raise so callers see a throttled/failed stream
+        # rather than an empty success.
+        if error_obj is not None:
+            raise error_obj

@@ -459,8 +459,10 @@ Phase 5) — see [phase-1-5-implementation-plan.md](phase-1-5-implementation-pla
 `probe.py` was not removed either; it's superseded in spirit by `sweep.py` but still works and
 nothing forced its removal.
 
-**Phase 4 — metrics v2.** Per-request records, streaming histograms, TTFT/ITL, run artifacts,
-`/metrics` + a starter Grafana dashboard.
+**Phase 4 — metrics v2.** ✅ **Implemented.** Per-request records, a bounded-memory log histogram for
+percentiles, TTFT/ITL capture, persistent HTTP client, per-run artifacts (JSONL + atomic summary),
+`GET /metrics`, and a starter Grafana dashboard at `dashboard/grafana/starter-dashboard.json`.
+See [phase-1-5-implementation-plan.md](phase-1-5-implementation-plan.md) §4.8 for deviations.
 
 **Phase 5 — UI rebuild.** Delta protocol, real store, fixed long-format series, connection
 indicator, pending-command affordances. *Kills symptom 2.3.*

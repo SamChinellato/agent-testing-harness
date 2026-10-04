@@ -1,8 +1,7 @@
 # Phase 1–5 — Implementation Plan
 
-**Status:** Phase 1 ✅ **implemented**, Phase 2 ✅ **implemented**, Phase 3 ✅ **implemented** —
-see each phase's "Implementation notes" subsection for what shipped and where it deviated from
-this plan. Phases 4–5 still draft.
+**Status:** Phases 1–4 ✅ **implemented** — see each phase's "Implementation notes" subsection for
+what shipped and where it deviated from this plan. Phase 5 still draft.
 **Parent:** [redesign-spec.md](redesign-spec.md) §4, §6
 **Purpose:** this is the actionable, file-by-file companion to the architecture in
 `redesign-spec.md` §4. That document explains *why*; this one specifies *what to build*: concrete
@@ -625,6 +624,66 @@ deliberately keeps out of the bespoke UI.
 6. Tests: TTFT/ITL measured correctly against a fake streaming endpoint with known delays;
    percentile estimator within tolerance of exact on a synthetic dataset; artifact survives a
    simulated mid-run crash (partial `summary.json` is still valid JSON).
+
+---
+
+### 4.8 Implementation notes (what actually shipped, and where it deviated)
+
+**Files added:** `metrics/histogram.py` (`LogHistogram`), `metrics/aggregate.py` (`Aggregate`, shared
+by the live store and the on-disk artifact so they can never disagree), `metrics/store.py`
+(`MetricsStore`, `default_store`), `metrics/prometheus.py` (`render`), `metrics/artifact.py`
+(`RunArtifact`), `dashboard/grafana/starter-dashboard.json`, `tests/test_metrics.py` (23 tests),
+`tests/conftest.py` (routes run artifacts to a temp dir so the suite never writes into the repo).
+**Files extended:** `harness.py` (persistent HTTP client, TTFT/ITL capture), `telemetry.py`
+(`ts_ingest_ms`, `ttft_ms`, `itl_ms_mean`, `remove_listener`), `runner.py` (run artifact, drop
+reporting, client release), `scenario/executors/*` (`live_stats`), `control/models.py` +
+`client.py` + `api.py` (drops carried on heartbeat), `dashboard/app.py` (ingest stamping, `/metrics`).
+**Verified:** `uv run pytest tests/ -q` → 113 passed (up from Phase 3's 96). A real scenario run
+produces a finished `summary.json` with the git SHA, executor stats, and one JSONL line per model
+call.
+
+**Deviation 1 — log-bucketed histogram instead of t-digest.** A `gamma=1.02` log histogram gives
+≤1% relative error with memory bounded by bucket count (a few hundred), with no dependency. Tested
+against exact percentiles on 20k lognormal samples.
+
+**Deviation 2 — JSON Lines instead of Parquet.** Parquet needs pyarrow and a finalised file; JSONL
+appends per line, so a crashed run keeps every record it got to. Convert offline if you want
+columnar analysis. `summary.json` is rewritten atomically (temp file + `os.replace`) every two
+seconds, so readers never see a half-written summary.
+
+**Deviation 3 — artifacts are written by the worker, not the dashboard.** The record of a run
+survives the dashboard being down, and each scenario's artifact lives next to the process that ran
+it. The dashboard's `/metrics` is a separate, live, in-memory view fed from the same events.
+
+**Deviation 4 — aggregation is per worker, not per (worker, node).** The plan's §4.4 said per
+`(worker_id, node)`. Per-node latency distributions are useful but multiply series cardinality, and
+the first consumer (the starter Grafana dashboard) doesn't need them yet. Easy to add later by
+keying `MetricsStore.by_worker` on the pair.
+
+**Deviation 5 — `RequestRecord` was not introduced.** `TelemetryEvent` stayed as the single record
+type, extended with the Phase 4 fields, rather than adding a parallel model that would need
+converting at every boundary. The atom is still written once and never mutated.
+
+**Deviation 6 — `interrupted` is not recorded.** An interrupt raised at a checkpoint before the HTTP
+call emits no telemetry event (existing behaviour), so there is no record to flag. Recording
+interrupted calls would mean emitting events from the checkpoints too; deferred.
+
+**Deviation 7 — `/reset` does not clear metrics.** `/reset` clears the live event buffer for the UI,
+but `/metrics` counters are cumulative since process start. A Prometheus counter that goes backwards
+looks like a restart and corrupts `rate()`.
+
+**Finding #15 (naive local timestamps) — fixed for bucketing.** Every event is stamped with
+`ts_ingest_ms` on arrival; buckets, windows and `/metrics` use that. The agent's own `ts` is used only
+to record clock skew per worker (`agent_harness_clock_skew_ms`), so a misconfigured agent clock is
+visible rather than silently mis-bucketing its traffic.
+
+**Finding #24 (fresh HTTP client per call) — fixed.** Each `ModelHarness` keeps one persistent
+`AsyncClient` with a connection pool, created lazily and released with `aclose()`. Covered by a test
+asserting the same client is reused across calls.
+
+**TTFT/ITL caveat.** Measured at the generator boundary, so consumer-side delay between yields is
+included in ITL. For a load harness this is the honest number (it's what the caller experiences),
+but it is not a pure server-side figure.
 
 ---
 

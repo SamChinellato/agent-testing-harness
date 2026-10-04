@@ -25,13 +25,13 @@ async def _run_scheduled(
     interval_for_rate: Callable[[float], float],
     total_duration_s: float,
     max_vus: int,
+    stats: ExecutorStats,
 ) -> ExecutorStats:
     """Shared scheduler loop for every open-model executor below. Fires a
     new task on a clock; if `max_vus` are already in flight, the new
     iteration is dropped (counted, never started) rather than queued —
     queuing it would turn this back into a closed model.
     """
-    stats = ExecutorStats()
     start = time.monotonic()
     in_flight: Set[asyncio.Task] = set()
 
@@ -90,9 +90,11 @@ class ConstantArrivalRate(Executor):
         self.max_vus = max_vus
 
     async def run(self, iteration_fn: IterationFn, stop_event: asyncio.Event) -> ExecutorStats:
+        self.live_stats = ExecutorStats()
         return await _run_scheduled(
             iteration_fn, stop_event, rate_at=lambda _elapsed: self.rate,
             interval_for_rate=_constant_interval, total_duration_s=self.duration_s, max_vus=self.max_vus,
+            stats=self.live_stats,
         )
 
 
@@ -125,9 +127,11 @@ class RampingArrivalRate(Executor):
         return float(self.stages[-1].target)
 
     async def run(self, iteration_fn: IterationFn, stop_event: asyncio.Event) -> ExecutorStats:
+        self.live_stats = ExecutorStats()
         return await _run_scheduled(
             iteration_fn, stop_event, rate_at=self._rate_at,
             interval_for_rate=_constant_interval, total_duration_s=self.total_duration_s, max_vus=self.max_vus,
+            stats=self.live_stats,
         )
 
 
@@ -148,7 +152,9 @@ class PoissonArrivalRate(Executor):
         return self._rng.expovariate(1.0 / mean_interval)
 
     async def run(self, iteration_fn: IterationFn, stop_event: asyncio.Event) -> ExecutorStats:
+        self.live_stats = ExecutorStats()
         return await _run_scheduled(
             iteration_fn, stop_event, rate_at=lambda _elapsed: self.rate,
             interval_for_rate=self._interval, total_duration_s=self.duration_s, max_vus=self.max_vus,
+            stats=self.live_stats,
         )

@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Dict, List, Literal, Optional
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -16,6 +16,7 @@ from maasagentharness.control.api import budgets_router, runs_router, router as 
 from maasagentharness.control.budgets import Budget, resolve_budget
 from maasagentharness.control.store import WorkerStore
 from maasagentharness.control.supervisor import Supervisor
+from maasagentharness.metrics import default_store, render_prometheus
 from maasagentharness.telemetry import TelemetryEvent
 
 _shutdown_event = asyncio.Event()
@@ -209,6 +210,19 @@ async def register_agent(reg: AgentRegistration, request: Request):
     return {"status": "registered", "user": reg.user}
 
 
+def _event_time(ev: TelemetryEvent, fallback: float) -> float:
+    """Phase 4 (redesign-spec.md finding #15): bucket and window decisions use
+    the server's ingest stamp, never the agent's clock. The agent's `ts` is
+    only a fallback for events that somehow arrived without an ingest stamp.
+    """
+    if ev.ts_ingest_ms:
+        return ev.ts_ingest_ms / 1000.0
+    try:
+        return datetime.fromisoformat(ev.ts).timestamp()
+    except Exception:
+        return fallback
+
+
 def _prune_events() -> None:
     """Enforce the documented 15-minute retention window, plus a hard count
     cap as a memory backstop. Phase 0 fix #0.12 — previously `WINDOW_SECONDS`
@@ -223,10 +237,7 @@ def _prune_events() -> None:
     cutoff = now - WINDOW_SECONDS
     kept = []
     for ev in events_buffer:
-        try:
-            ev_ts = datetime.fromisoformat(ev.ts).timestamp()
-        except Exception:
-            ev_ts = now
+        ev_ts = _event_time(ev, now)
         if ev_ts >= cutoff:
             kept.append(ev)
     events_buffer = kept
@@ -239,9 +250,29 @@ async def receive_event(event: TelemetryEvent):
     global _next_seq
     _next_seq += 1
     event.seq = _next_seq
+    # Phase 4: the server stamps arrival time. The agent's own ts (string,
+    # naive local) is kept only so clock skew can be measured.
+    ingest_ms = int(time.time() * 1000)
+    event.ts_ingest_ms = ingest_ms
+    agent_ts_ms = None
+    try:
+        agent_ts_ms = int(datetime.fromisoformat(event.ts).timestamp() * 1000)
+    except Exception:
+        pass
     events_buffer.append(event)
     _prune_events()
+    default_store.ingest(event, agent_ts_ms=agent_ts_ms)
     return {"status": "ok"}
+
+
+@app.get("/metrics", response_class=PlainTextResponse)
+async def prometheus_metrics():
+    """Prometheus exposition format (Phase 4, plan §4.6). Cumulative since
+    the dashboard process started. `/reset` deliberately does NOT clear
+    these — a Prometheus counter that goes backwards looks like a restart
+    and corrupts rate() calculations.
+    """
+    return render_prometheus(default_store)
 
 
 @app.get("/control/{user_id}")
@@ -402,10 +433,7 @@ async def calculate_metrics(registered_users: List[str]):
         buckets[b] = bucket
 
     for ev in events_buffer:
-        try:
-            ev_ts = datetime.fromisoformat(ev.ts).timestamp()
-        except Exception:
-            ev_ts = now
+        ev_ts = _event_time(ev, now)
 
         user = ev.user
         if user in user_metrics:
