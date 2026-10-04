@@ -4,9 +4,10 @@ See docs/phase-1-5-implementation-plan.md §Phase 1 for the full contract
 table. This module only wires HTTP routes to WorkerStore/Supervisor calls;
 it holds no state of its own.
 """
-from typing import Optional
+from typing import List, Optional
 
 from fastapi import APIRouter, HTTPException, Request
+from pydantic import BaseModel, ConfigDict
 
 from maasagentharness.control.budgets import (
     BudgetUpdate,
@@ -27,6 +28,7 @@ from maasagentharness.control.supervisor import ManagedWorkerError, Supervisor
 
 router = APIRouter(prefix="/api/workers", tags=["workers"])
 budgets_router = APIRouter(prefix="/api/budgets", tags=["budgets"])
+runs_router = APIRouter(prefix="/api/runs", tags=["runs"])
 
 
 def _store(request: Request) -> WorkerStore:
@@ -202,6 +204,17 @@ async def list_budgets(request: Request):
     return [BudgetView.from_budget(b) for b in await store.list_budgets()]
 
 
+@budgets_router.get("/{budget_id}", response_model=BudgetView)
+async def get_budget(budget_id: str, request: Request):
+    """Phase 3: lets a scenario (or a direct `curl`) fetch one named budget
+    by id instead of listing all of them client-side.
+    """
+    budget = await _store(request).get_budget(budget_id)
+    if budget is None:
+        raise HTTPException(status_code=404, detail=f"Unknown budget '{budget_id}'")
+    return BudgetView.from_budget(budget)
+
+
 @budgets_router.put("/{budget_id}", response_model=BudgetView)
 async def put_budget(budget_id: str, update: BudgetUpdate, request: Request):
     """Full replace, not a patch — see BudgetUpdate's docstring. Upserts:
@@ -234,3 +247,75 @@ async def delete_budget(budget_id: str, request: Request):
     deleted = await store.delete_budget(budget_id)
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Unknown budget '{budget_id}'")
+
+
+# ---------------------------------------------------------------------------
+# Phase 3: runs — spawns one managed worker process per named scenario in
+# a run file, via the Phase 1 supervisor. This is what
+# docs/phase-1-5-implementation-plan.md §3.5 calls "the UI's launch
+# scenario action" — Phase 5 builds the button; this is the route it hits.
+# `uv run harness run scenario.yaml` (scenario/cli.py) does not need this
+# route at all — it runs scenarios in-process directly. This route exists
+# specifically for the case where you want each scenario to be its own
+# independently manageable/killable worker, visible and controllable from
+# the dashboard like any other.
+# ---------------------------------------------------------------------------
+
+class RunLaunchRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    scenario_path: str
+    scenario_names: Optional[List[str]] = None  # defaults to every scenario in the file
+
+
+class RunLaunchResponse(BaseModel):
+    run: str
+    spawned: List[str]  # worker_ids, one per launched scenario
+
+
+@runs_router.post("", response_model=RunLaunchResponse)
+async def launch_run(req: RunLaunchRequest, request: Request):
+    # Local imports — the scenario package doesn't need to be on the
+    # import path for every dashboard request, only this one route.
+    from maasagentharness.scenario.loader import load_run_config
+    from maasagentharness.scenario.schema import ScenarioConfigError
+
+    try:
+        run_config = load_run_config(req.scenario_path)
+    except ScenarioConfigError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    store = _store(request)
+    supervisor = _supervisor(request)
+
+    names = req.scenario_names or list(run_config.scenarios.keys())
+    unknown = [n for n in names if n not in run_config.scenarios]
+    if unknown:
+        raise HTTPException(status_code=400, detail=f"Unknown scenario name(s): {', '.join(unknown)}")
+
+    dashboard_url = str(request.base_url).rstrip("/")
+    spawned: List[str] = []
+    for name in names:
+        scenario = run_config.scenarios[name]
+        worker_id = f"{run_config.run}-{name}"
+        await store.register(
+            worker_id=worker_id,
+            team=run_config.run,
+            display_name=worker_id,
+            task_description=f"scenario '{name}' ({scenario.executor.kind})",
+            managed=True,
+            agent=scenario.agent,
+            mode=scenario.mode,
+        )
+        try:
+            await supervisor.spawn(
+                worker_id,
+                env_overrides={"DASHBOARD_URL": dashboard_url},
+                module="maasagentharness.scenario.cli",
+                args=["run", req.scenario_path, "--scenario", name],
+            )
+        except ManagedWorkerError as e:
+            raise HTTPException(status_code=409, detail=str(e))
+        spawned.append(worker_id)
+
+    return RunLaunchResponse(run=run_config.run, spawned=spawned)

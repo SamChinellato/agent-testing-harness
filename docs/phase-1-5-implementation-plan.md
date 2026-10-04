@@ -1,8 +1,8 @@
 # Phase 1–5 — Implementation Plan
 
-**Status:** Phase 1 ✅ **implemented**, Phase 2 ✅ **implemented** — see each phase's
-"Implementation notes" subsection for what shipped and where it deviated from this plan.
-Phases 3–5 still draft.
+**Status:** Phase 1 ✅ **implemented**, Phase 2 ✅ **implemented**, Phase 3 ✅ **implemented** —
+see each phase's "Implementation notes" subsection for what shipped and where it deviated from
+this plan. Phases 4–5 still draft.
 **Parent:** [redesign-spec.md](redesign-spec.md) §4, §6
 **Purpose:** this is the actionable, file-by-file companion to the architecture in
 `redesign-spec.md` §4. That document explains *why*; this one specifies *what to build*: concrete
@@ -461,6 +461,64 @@ via the Phase 1 supervisor.
 7. Tests: dropped-iteration counting under an artificially slow fake endpoint; ramping_vus hits
    each stage's target concurrency; sweep finds a ceiling against a fake endpoint with a known
    breaking point; threshold parser.
+
+### 3.7 Implementation notes (what actually shipped, and where it deviated)
+
+**Files added:** `scenario/schema.py`, `scenario/loader.py`, `scenario/executors/{base,vus,arrival,factory}.py`,
+`scenario/sweep.py`, `scenario/cli.py`. **Files extended:** `runner.py` (`run_scenario`, plus a
+`_run_one_cycle` extraction shared with `run_loop`), `control/supervisor.py` (`spawn()` generalized
+to take `module`/`args`), `control/api.py` (`runs_router`, `POST /api/runs`, `GET /api/budgets/{id}`),
+`control/client.py` (`get_budget_by_id`, `patch_desired`). **Tests added:** `tests/test_scenario.py`
+(28 tests — duration/threshold parsing, loader + `${ENV_VAR}` interpolation, every executor against
+fake iteration functions, sweep against a fake endpoint with a simulated breaking point) and
+`tests/test_scenario_integration.py` (7 tests — a real `AgentWorker.run_scenario()` against the real
+app, including a live Stop command cutting a 10s scenario short, and `POST /api/runs` spawning real
+subprocesses). **Verified:** `uv run pytest tests/ -q` → 96 passed (up from Phase 2's 61), plus a
+manual CLI smoke test (`uv run harness run demo.yaml --dry-run`) against a real multi-scenario YAML
+file with `${ENV_VAR}` interpolation, inline budgets, and both an arrival-rate and a ramping-vus
+scenario.
+
+**Deviation 1 — `run_scenario` is additive, not a replacement.** §3.4 said "`AgentWorker.run_loop`
+is replaced by `run_scenario`." Taken literally, that would have deleted the dashboard-driven
+Start/Stop flow Phases 0-2 spent three phases making reliable. What shipped: `run_loop` is
+untouched (verified — the Phase 1 end-to-end test still exercises it unmodified and still passes),
+and `run_scenario` is a new, separate entry point for declarative load generation. The two share
+`_run_one_cycle` (a new extraction — the triage/research/assistant dispatch body, previously inlined
+in `run_loop`, pulled into one method both call into) so there's no duplicated agent-dispatch logic,
+but they're genuinely two different drivers for two different use cases: dashboard-clicked
+Start/Stop vs. `uv run harness run scenario.yaml`.
+
+**Deviation 2 — `mode` was missing from `ScenarioConfig` in the plan.** §3.2's schema had
+`agent`/`executor`/`budget`/`graceful_stop`/`start_time` but no way to pick naive/paced/runaway —
+an orthogonal axis (retry/backoff strategy, whether `client_bucket` enforcement actually blocks)
+that a load-generation scenario clearly still needs to control. Added, defaulting to `"naive"`.
+
+**Deviation 3 — `Executor.run()` takes no `duration_s` parameter.** §3.3's protocol signature
+included one; it doesn't fit a `Stage`-based ramp (`ramping_vus`, `ramping_arrival_rate`) uniformly
+with a flat-duration executor. Each concrete executor carries its own schedule from construction
+instead — `build_executor(cfg: ExecutorConfig)` is the factory that resolves an `ExecutorConfig`
+into a fully-configured instance of the right shape.
+
+**Deviation 4 — `/act/{1,2}` were NOT retired.** §3.5 said to retire them once `POST /api/runs`
+existed. They still work, unchanged, for the same reason Phase 1 kept `run_loop` and Phase 2 kept
+`LimitEditor`: the shipped dashboard has no "launch scenario" button yet (that's Phase 5's
+`ScenarioLauncher`), so deleting the only interactive scenario-trigger the current UI has, before
+its replacement exists, would be a pure regression. `POST /api/runs` is real and tested, just not
+yet wired to anything the shipped frontend calls.
+
+**Deviation 5 — threshold evaluation is necessarily partial.** `ThresholdSpec.parse()` and `.check()`
+are fully implemented and tested, but real evaluation of `"p95(total_latency_ms) < 8000"`-style
+expressions against actual percentiles needs Phase 4's histogram store, which doesn't exist yet.
+`sweep.py`'s ceiling-finding uses the one breach signal available today without it:
+`iterations_dropped > 0`. Scenario files can declare `thresholds` now and have them parse and
+validate; full enforcement arrives with Phase 4.
+
+**Addition beyond the plan — `AgentWorker.run_scenario` sends an explicit final heartbeat.** Found
+during manual testing: a scenario shorter than the 1s heartbeat interval could finish, get cancelled,
+and leave the store showing a stale `phase` (e.g. still `"starting"`) because the periodic heartbeat
+loop never got a second tick before being cancelled. Fixed by sending one heartbeat synchronously in
+`run_scenario`'s `finally` block before cancelling the poll task. Covered by
+`test_run_scenario_completes_and_reports_stats`.
 
 ---
 

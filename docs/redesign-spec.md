@@ -450,8 +450,14 @@ resolution, `shadow` enforcement. *Kills symptom 2.2 at the API/backend level.* 
 form-submit editor with Apply/Revert (§2.4's `BudgetEditor.tsx`) is explicitly deferred to Phase 5 —
 see [phase-1-5-implementation-plan.md](phase-1-5-implementation-plan.md) §2.7.
 
-**Phase 3 — scenarios and executors.** Scenario file, executor set, dropped-iteration accounting,
-`sweep`. Retire `/act/{1,2}` and `probe.py`. *Delivers the missing core capability from §1.*
+**Phase 3 — scenarios and executors.** ✅ **Implemented.** Scenario file (YAML, with `${ENV_VAR}`
+interpolation), the full executor set (constant/ramping VUs, constant/ramping/poisson arrival
+rate), dropped-iteration accounting, `sweep`, a `uv run harness run scenario.yaml` CLI, and
+`POST /api/runs` for dashboard-triggered multi-scenario launches. *Delivers the missing core
+capability from §1.* `/act/{1,2}` were deliberately NOT retired (no replacement UI exists until
+Phase 5) — see [phase-1-5-implementation-plan.md](phase-1-5-implementation-plan.md) §3.7.
+`probe.py` was not removed either; it's superseded in spirit by `sweep.py` but still works and
+nothing forced its removal.
 
 **Phase 4 — metrics v2.** Per-request records, streaming histograms, TTFT/ITL, run artifacts,
 `/metrics` + a starter Grafana dashboard.

@@ -14,7 +14,7 @@ import asyncio
 import os
 import signal
 import sys
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from maasagentharness.control.store import WorkerStore
 
@@ -31,17 +31,30 @@ class Supervisor:
         self._processes: Dict[str, asyncio.subprocess.Process] = {}
         self._reaper_task: Optional[asyncio.Task] = None
 
-    async def spawn(self, worker_id: str, env_overrides: Dict[str, str]) -> int:
-        """Spawn `python -m maasagentharness.runner` as a child process with
-        the given environment overrides (USER_ID, DASHBOARD_URL, etc).
+    async def spawn(
+        self,
+        worker_id: str,
+        env_overrides: Dict[str, str],
+        module: str = "maasagentharness.runner",
+        args: Optional[List[str]] = None,
+    ) -> int:
+        """Spawn `python -m <module> <args>` as a child process with the
+        given environment overrides (USER_ID, DASHBOARD_URL, etc).
         Returns the PID. Raises ManagedWorkerError if already running.
+
+        `module`/`args` default to the plain `uv run agent` worker
+        (`maasagentharness.runner`, no args). Phase 3's `POST /api/runs`
+        passes `module="maasagentharness.scenario.cli"` with
+        `args=["run", scenario_path, "--scenario", name]` instead, so one
+        scenario name becomes one independently manageable/killable
+        worker process, same as any other managed worker.
         """
         if worker_id in self._processes and self._processes[worker_id].returncode is None:
             raise ManagedWorkerError(f"worker '{worker_id}' is already running (managed)")
 
         env = {**os.environ, **env_overrides}
         proc = await asyncio.create_subprocess_exec(
-            sys.executable, "-m", "maasagentharness.runner",
+            sys.executable, "-m", module, *(args or []),
             env=env,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.STDOUT,

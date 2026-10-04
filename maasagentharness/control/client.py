@@ -80,6 +80,32 @@ class ControlClient:
                 pass
         return None
 
+    async def get_budget_by_id(self, budget_id: str) -> Optional[Budget]:
+        """Phase 3: a scenario names its budget explicitly (`ScenarioConfig.budget`)
+        rather than relying on worker/team/global resolution — this fetches that
+        exact budget, bypassing `resolve_budget` entirely.
+        """
+        async with httpx.AsyncClient(timeout=1.5, transport=self.transport) as client:
+            try:
+                resp = await client.get(f"{self.base}/api/budgets/{budget_id}")
+                if resp.status_code == 200:
+                    return Budget(**resp.json())
+            except Exception:
+                pass
+        return None
+
+    async def patch_desired(self, **fields) -> None:
+        """Generic PATCH /desired — used by run_scenario to mark itself
+        running/stopped so it shows up in the dashboard like any other
+        worker, even though nothing is waiting on a dashboard Start click
+        to begin (a scenario self-drives for its configured duration).
+        """
+        async with httpx.AsyncClient(timeout=1.5, transport=self.transport) as client:
+            try:
+                await client.patch(f"{self.base}/api/workers/{self.worker_id}/desired", json=fields)
+            except Exception:
+                pass
+
     async def heartbeat(
         self,
         applied_generation: int,

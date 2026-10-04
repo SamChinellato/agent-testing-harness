@@ -16,12 +16,14 @@ dependencies = [
     "uvicorn>=0.34.0",
     "rich>=13.9.0",
     "aiosqlite>=0.20.0",
+    "pyyaml>=6.0.0",
 ]
 
 [project.scripts]
 agent = "maasagentharness.runner:main"
 dashboard = "maasagentharness.dashboard.app:main"
 probe = "maasagentharness.probe:main"
+harness = "maasagentharness.scenario.cli:main"
 
 [dependency-groups]
 # Phase 0 fix #0.14: tests existed but ran under nothing — no pytest or

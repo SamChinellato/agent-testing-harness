@@ -148,6 +148,7 @@ maas-agent-demo/
 | `uv run dashboard` | Start the FastAPI dashboard on port 8000                       |
 | `uv run agent`     | Start an agent worker (reads config from environment)          |
 | `uv run probe`     | Run a 90-second rate-limit probe to characterise your endpoint |
+| `uv run harness run scenario.yaml` | Run a declarative load-test scenario (Phase 3) — see [Phase 1–5 Plan](docs/phase-1-5-implementation-plan.md) §Phase 3. Add `--dry-run` to validate and print the resolved plan without making any calls. |
 
 
 ---

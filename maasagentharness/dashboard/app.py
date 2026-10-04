@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, HTMLResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, ConfigDict, Field
 
-from maasagentharness.control.api import budgets_router, router as workers_router
+from maasagentharness.control.api import budgets_router, runs_router, router as workers_router
 from maasagentharness.control.budgets import Budget, resolve_budget
 from maasagentharness.control.store import WorkerStore
 from maasagentharness.control.supervisor import Supervisor
@@ -49,6 +49,7 @@ async def _lifespan(app: FastAPI):
 app = FastAPI(title="MaaS Rate-Limit Demo Dashboard API", lifespan=_lifespan)
 app.include_router(workers_router)
 app.include_router(budgets_router)
+app.include_router(runs_router)
 
 app.add_middleware(
     CORSMiddleware,

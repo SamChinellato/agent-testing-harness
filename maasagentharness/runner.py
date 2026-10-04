@@ -8,12 +8,31 @@ from maasagentharness.control.budgets import Budget
 from maasagentharness.control.client import ControlClient
 from maasagentharness.control.models import DesiredStateResponse, Phase
 from maasagentharness.harness import ModelHarness, WorkerInterrupted, WorkerStopped
+from maasagentharness.scenario.executors.base import ExecutorStats
+from maasagentharness.scenario.executors.factory import build_executor
+from maasagentharness.scenario.schema import ScenarioConfig
 from maasagentharness.telemetry import TelemetryEvent, telemetry
 from maasagentharness.agents.research import ResearchAgent
 from maasagentharness.agents.triage import TriageAgent
 from maasagentharness.agents.assistant import AssistantAgent
 
 DATA_DIR = Path(__file__).parent / "data"
+
+SAMPLE_RESEARCH_QUERIES = [
+    "What is our complete hardship and mortgage repayment moratorium policy under sudden income disruption?",
+    "How do we handle unarranged overdraft fees and direct debit dishonours during financial distress?",
+    "What are the investigation procedures and customer liability protections for SIM-swap and APP scams?",
+    "What is the statutory chargeback timeframe for airline and hotel booking cancellations?",
+]
+
+SAMPLE_CHAT_QUESTIONS = [
+    "Can you explain the difference between tier-1 and tier-2 dispute thresholds?",
+    "What happens if the merchant doesn't respond within 14 days?",
+    "Does this apply to small business accounts as well?",
+    "What if the transaction was done via contactless chip-and-pin?",
+    "Are late fees waived while the case is in moratorium?",
+    "Who makes the final decision on internal dispute resolution appeals?",
+]
 
 
 class AgentWorker:
@@ -71,6 +90,13 @@ class AgentWorker:
         # every poll tick via `self.harness.update_budget(...)`.
         self.harness: Optional[ModelHarness] = None
         self.budget: Optional[Budget] = None
+
+        # Per-cycle state, shared between `run_loop`'s fixed cadence and
+        # `run_scenario`'s executor-driven `iteration_fn` — see
+        # `_run_one_cycle`, the single place both call into.
+        self._step_idx = 0
+        self._assistant_turn = 0
+        self._assistant_instance: Optional[AssistantAgent] = None
 
         self._poll_task: Optional[asyncio.Task] = None
         self._load_corpus()
@@ -170,16 +196,55 @@ class AgentWorker:
             )
             await asyncio.sleep(1.0)
 
+    async def _run_one_cycle(self, agent_type: str, mode: str) -> None:
+        """Runs exactly one triage/research/assistant cycle using
+        `self.harness`. Shared by `run_loop` (the dashboard-driven fixed
+        cadence from Phase 0-2) and `run_scenario`'s executor-driven
+        `iteration_fn` (Phase 3) — see
+        docs/phase-1-5-implementation-plan.md §3.4: "iteration_fn becomes
+        a closure running exactly one cycle, reusing the harness
+        unchanged." Raises WorkerStopped/WorkerInterrupted straight
+        through; callers decide what that means for their own loop.
+        """
+        if agent_type == "triage":
+            triage = TriageAgent(harness=self.harness)
+            letter_item = self.letters[self._step_idx % len(self.letters)] if self.letters else {"id": "LET-001"}
+            letter_path = DATA_DIR / "letters" / f"letter_{int(letter_item['id'].replace('LET-', '')):04d}.txt"
+            letter_text = letter_path.read_text(encoding="utf-8") if letter_path.exists() else "Dispute sample text"
+            print(f"[{self.user_id}][TRIAGE] Processing {letter_item['id']} in {mode} mode...", flush=True)
+            await triage.run(letter_text=letter_text, letter_id=letter_item["id"])
+            self._step_idx += 1
+
+        elif agent_type == "research":
+            q = SAMPLE_RESEARCH_QUERIES[self._step_idx % len(SAMPLE_RESEARCH_QUERIES)]
+            print(f"[{self.user_id}][RESEARCH] '{q[:60]}...' in {mode} mode", flush=True)
+            research = ResearchAgent(harness=self.harness)
+            await research.run(query=q)
+            self._step_idx += 1
+
+        elif agent_type == "assistant":
+            if self._assistant_instance is None or self._assistant_turn >= 15:
+                self._assistant_instance = AssistantAgent(harness=self.harness)
+                self._assistant_turn = 0
+            q = SAMPLE_CHAT_QUESTIONS[self._assistant_turn % len(SAMPLE_CHAT_QUESTIONS)]
+            print(f"[{self.user_id}][ASSISTANT] Turn {self._assistant_turn + 1}: '{q}' in {mode} mode", flush=True)
+            async for _chunk in self._assistant_instance.stream_turn(q):
+                pass
+            self._assistant_turn += 1
+
     async def run_loop(self):
+        """The dashboard-driven fixed cadence from Phase 0-2: polls desired
+        state, runs one cycle at a time, sleeps a fixed per-mode interval
+        between cycles. Unchanged by Phase 3 — `run_scenario` below is
+        additive, not a replacement, so the existing Start/Stop dashboard
+        flow keeps working exactly as before. See
+        docs/phase-1-5-implementation-plan.md §3.7 for why.
+        """
         print(f"[WORKER] Starting agent worker for user '{self.user_id}' (team '{self.team_id}')...", flush=True)
         self.phase = Phase.STARTING
         await self.control.register(agent=settings.agent_type, mode=settings.agent_mode, managed=False)
         telemetry.add_listener(self._on_telemetry_event)
         self._poll_task = asyncio.create_task(self._poll_and_heartbeat_loop())
-
-        step_idx = 0
-        assistant_turn = 0
-        assistant_instance: Optional[AssistantAgent] = None
 
         current_agent_type = settings.agent_type
         current_mode = settings.agent_mode
@@ -227,53 +292,13 @@ class AgentWorker:
                         interrupt_event=self.interrupt_event,
                         budget=self.budget,
                     )
-                    assistant_instance = None
+                    self._assistant_instance = None
 
                 try:
-                    if agent_type == "triage":
-                        triage = TriageAgent(harness=self.harness)
-                        letter_item = self.letters[step_idx % len(self.letters)] if self.letters else {"id": "LET-001"}
-                        letter_path = DATA_DIR / "letters" / f"letter_{int(letter_item['id'].replace('LET-', '')):04d}.txt"
-                        letter_text = letter_path.read_text(encoding="utf-8") if letter_path.exists() else "Dispute sample text"
-                        print(f"[{self.user_id}][TRIAGE] Processing {letter_item['id']} in {mode} mode...", flush=True)
-                        await triage.run(letter_text=letter_text, letter_id=letter_item["id"])
-                        step_idx += 1
-
-                    elif agent_type == "research":
-                        sample_queries = [
-                            "What is our complete hardship and mortgage repayment moratorium policy under sudden income disruption?",
-                            "How do we handle unarranged overdraft fees and direct debit dishonours during financial distress?",
-                            "What are the investigation procedures and customer liability protections for SIM-swap and APP scams?",
-                            "What is the statutory chargeback timeframe for airline and hotel booking cancellations?",
-                        ]
-                        q = sample_queries[step_idx % len(sample_queries)]
-                        print(f"[{self.user_id}][RESEARCH] '{q[:60]}...' in {mode} mode", flush=True)
-                        research = ResearchAgent(harness=self.harness)
-                        await research.run(query=q)
-                        step_idx += 1
-
-                    elif agent_type == "assistant":
-                        if assistant_instance is None or assistant_turn >= 15:
-                            assistant_instance = AssistantAgent(harness=self.harness)
-                            assistant_turn = 0
-                        sample_chat_questions = [
-                            "Can you explain the difference between tier-1 and tier-2 dispute thresholds?",
-                            "What happens if the merchant doesn't respond within 14 days?",
-                            "Does this apply to small business accounts as well?",
-                            "What if the transaction was done via contactless chip-and-pin?",
-                            "Are late fees waived while the case is in moratorium?",
-                            "Who makes the final decision on internal dispute resolution appeals?",
-                        ]
-                        q = sample_chat_questions[assistant_turn % len(sample_chat_questions)]
-                        print(f"[{self.user_id}][ASSISTANT] Turn {assistant_turn + 1}: '{q}' in {mode} mode", flush=True)
-                        async for chunk in assistant_instance.stream_turn(q):
-                            pass
-                        assistant_turn += 1
-
+                    await self._run_one_cycle(agent_type, mode)
                 except WorkerStopped:
                     # Expected — a Stop command interrupted this cycle partway
-                    # through. Don't advance step counters for a cycle that
-                    # didn't complete, and don't log it as an error.
+                    # through. Don't log it as an error.
                     print(f"[{self.user_id}] Stopped mid-cycle.", flush=True)
                     self.phase = Phase.STOPPED
                 except WorkerInterrupted:
@@ -293,6 +318,82 @@ class AgentWorker:
         finally:
             if self._poll_task is not None:
                 self._poll_task.cancel()
+
+    async def run_scenario(self, scenario: ScenarioConfig) -> ExecutorStats:
+        """Phase 3: runs a declarative scenario — calibrated load generation
+        via one of the executors in scenario/executors/, instead of
+        `run_loop`'s fixed one-at-a-time cadence. Still registers,
+        heartbeats, and responds to Stop/Interrupt via the same
+        stop_event/interrupt_event `run_loop` uses — a scenario run shows
+        up in the dashboard as an ordinary worker lane and can still be
+        stopped from it, it just self-drives for its configured load shape
+        instead of waiting on a dashboard Start click. See
+        docs/phase-1-5-implementation-plan.md §3.4.
+        """
+        print(f"[WORKER] Starting scenario run for user '{self.user_id}' (agent={scenario.agent}, "
+              f"mode={scenario.mode}, executor={scenario.executor.kind})...", flush=True)
+        self.phase = Phase.STARTING
+        await self.control.register(agent=scenario.agent, mode=scenario.mode, managed=False)
+        telemetry.add_listener(self._on_telemetry_event)
+        self._poll_task = asyncio.create_task(self._poll_and_heartbeat_loop())
+
+        # A scenario names its budget explicitly, bypassing team/global
+        # fallback — resolve_budget's precedence is for dashboard-driven
+        # workers whose budget isn't pinned by the scenario itself.
+        if scenario.budget:
+            self.budget = await self.control.get_budget_by_id(scenario.budget)
+        else:
+            self.budget = await self.control.get_resolved_budget()
+
+        self.harness = ModelHarness(
+            user_id=self.user_id,
+            team_id=self.team_id,
+            agent_name=scenario.agent,
+            mode=scenario.mode,
+            stop_event=self.stop_event,
+            interrupt_event=self.interrupt_event,
+            budget=self.budget,
+        )
+
+        # Tell the dashboard this worker is live — a scenario run
+        # self-drives rather than waiting for a Start click, but still
+        # shows up as a normal lane and still honors a Stop from it.
+        await self.control.patch_desired(state="running", agent=scenario.agent, mode=scenario.mode)
+        self.stop_event.clear()
+        self.phase = Phase.RUNNING
+
+        async def iteration_fn() -> None:
+            await self._run_one_cycle(scenario.agent, scenario.mode)
+
+        executor = build_executor(scenario.executor)
+        try:
+            stats = await executor.run(iteration_fn, self.stop_event)
+        finally:
+            self.phase = Phase.STOPPED
+            await self.control.patch_desired(state="stopped")
+            # A short run can finish well inside the 1s heartbeat
+            # interval — without this, the poll task gets cancelled
+            # before ever reporting STOPPED, leaving the store showing
+            # whatever phase the last periodic heartbeat happened to
+            # catch (e.g. still "starting" for a sub-second scenario).
+            await self.control.heartbeat(
+                applied_generation=self.applied_generation,
+                phase=self.phase.value,
+                current_node=self.current_node,
+                iteration=self.iteration,
+                last_error=self.last_error,
+                applied_interrupt_token=self._last_seen_interrupt_token,
+            )
+            if self._poll_task is not None:
+                self._poll_task.cancel()
+
+        print(
+            f"[WORKER] Scenario run complete for '{self.user_id}': "
+            f"{stats.iterations_completed}/{stats.iterations_started} completed, "
+            f"{stats.iterations_dropped} dropped, over {stats.duration_s:.1f}s.",
+            flush=True,
+        )
+        return stats
 
 
 def main():
