@@ -47,14 +47,17 @@ export function WorkerRow({ worker, snapshot, slot }: { worker: WorkerSnapshot; 
       <div className="worker" aria-label={worker.display_name} role="article">
         <div style={{ minWidth: 0 }}>
           <div className="worker__name">{worker.display_name}</div>
-          <div className="worker__meta">
-            {worker.team} · {MODE_TEXT[worker.desired.mode] ?? worker.desired.mode}
-          </div>
+          <div className="worker__meta">{worker.team} · {worker.desired.agent}</div>
         </div>
 
-        <Label color={STATUS_COLOUR[status]} isCompact>
-          {STATUS_TEXT[status]}
-        </Label>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 4 }}>
+          <Label color={STATUS_COLOUR[status]} isCompact>
+            {STATUS_TEXT[status]}
+          </Label>
+          <Label color="blue" isCompact>
+            {MODE_TEXT[worker.desired.mode] ?? worker.desired.mode}
+          </Label>
+        </div>
 
         <div className="worker__rate" data-over={over ? 'true' : 'false'}>
           <strong>{count(rate)}</strong>
@@ -104,8 +107,9 @@ export function WorkerRow({ worker, snapshot, slot }: { worker: WorkerSnapshot; 
               {SELECTABLE_MODES.map((mode) => (
                 <DropdownItem
                   key={mode}
-                  isDisabled={busy || worker.desired.mode === mode}
-                  onClick={() => run(() => api.setMode(id, mode))}
+                  isSelected={worker.desired.mode === mode}
+                  isDisabled={busy}
+                  onClick={() => (worker.desired.mode === mode ? setMenuOpen(false) : run(() => api.setMode(id, mode)))}
                 >
                   {MODE_TEXT[mode]}
                 </DropdownItem>
