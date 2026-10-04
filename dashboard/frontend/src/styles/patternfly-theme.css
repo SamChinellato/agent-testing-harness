@@ -84,3 +84,18 @@
   --pf-v6-c-label--m-grey--BackgroundColor: var(--surface-inset);
   --pf-v6-c-label--m-grey--BorderColor: transparent;
 }
+
+/* Modal dialogs: PatternFly paints its own white box. Use the panel surface and
+ * ink text so the dialog matches the bench in both themes. */
+.pf-v6-c-modal-box.pf-v6-c-modal-box {
+  --pf-v6-c-modal-box--BackgroundColor: var(--surface-panel);
+  --pf-v6-c-modal-box--Color: var(--ink);
+  background-color: var(--surface-panel);
+  color: var(--ink);
+  border: 1px solid var(--rule);
+}
+
+.pf-v6-c-modal-box.pf-v6-c-modal-box .pf-v6-c-modal-box__title,
+.pf-v6-c-modal-box.pf-v6-c-modal-box .pf-v6-c-modal-box__body {
+  color: var(--ink);
+}

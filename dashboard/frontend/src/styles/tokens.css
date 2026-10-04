@@ -1,4 +1,4 @@
-/* Design tokens. Colour values come from the validated palette (dataviz skill,
+/* Design tokens. Type: Red Hat Display for the wordmark and readouts, Red Hat Text for everything else. Colour values come from the validated palette (dataviz skill,
  * validate_palette.js): light and dark series sets each pass the lightness,
  * chroma, CVD and contrast checks against their own surface.
  *
@@ -7,8 +7,8 @@
  * only for throttling and over-budget states. */
 
 :root {
-  --font-display: 'Instrument Serif', Georgia, 'Times New Roman', serif;
-  --font-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-display: 'Red Hat Display', 'Red Hat Text', system-ui, sans-serif;
+  --font-ui: 'Red Hat Text', system-ui, -apple-system, 'Segoe UI', sans-serif;
 
   --type-xs: 12px;
   --type-sm: 13px;
