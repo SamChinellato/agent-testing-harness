@@ -220,11 +220,14 @@ async def serve_spa(full_path: str):
 
 
 def main():
+    """Serve the dashboard. Binds every interface by default so other devices on
+    the network can reach it. Set HARNESS_HOST=127.0.0.1 to keep it local, and
+    HARNESS_PORT to choose a different port."""
     import uvicorn
     uvicorn.run(
         "maasagentharness.dashboard.app:app",
-        host="0.0.0.0",
-        port=8000,
+        host=os.getenv("HARNESS_HOST", "0.0.0.0"),
+        port=int(os.getenv("HARNESS_PORT", "8000")),
         reload=False,
         timeout_graceful_shutdown=1,
     )
