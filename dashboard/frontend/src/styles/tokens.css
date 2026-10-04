@@ -1,0 +1,93 @@
+/* Design tokens. Colour values come from the validated palette (dataviz skill,
+ * validate_palette.js): light and dark series sets each pass the lightness,
+ * chroma, CVD and contrast checks against their own surface.
+ *
+ * Status colours are reserved. Status is never shown by colour alone: each
+ * status has its own shape and a text label. The throttle vermilion is used
+ * only for throttling and over-budget states. */
+
+:root {
+  --font-display: 'Instrument Serif', Georgia, 'Times New Roman', serif;
+  --font-ui: 'IBM Plex Sans', system-ui, -apple-system, 'Segoe UI', sans-serif;
+
+  --type-xs: 12px;
+  --type-sm: 13px;
+  --type-md: 15px;
+  --type-lg: 18px;
+  --type-xl: 28px;
+  --type-display: 56px;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 36px;
+
+  --radius: 2px;
+  --page-max: 1360px;
+
+  /* Light */
+  --surface-page: #f1f4f6;
+  --surface-panel: #fbfcfd;
+  --surface-inset: #e8eef2;
+  --ink: #15222c;
+  --ink-2: #4c5f6b;
+  --ink-3: #6d7f8a;
+  --rule: #d3dde3;
+  --rule-strong: #a9b9c3;
+  --action: #15222c;
+  --action-ink: #fbfcfd;
+  --throttle: #c8452b;
+  --pending: #8f5f00;
+  --series-1: #2a6cc4;
+  --series-2: #c2680f;
+  --series-3: #0f8560;
+  --series-4: #8a3fa8;
+  --series-other: #6d7f8a;
+  --focus: #15222c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --surface-page: #0f171e;
+    --surface-panel: #15202a;
+    --surface-inset: #1b2935;
+    --ink: #e4ecf1;
+    --ink-2: #9aaebb;
+    --ink-3: #6f8493;
+    --rule: #27384a;
+    --rule-strong: #3d5366;
+    --action: #e4ecf1;
+    --action-ink: #0f171e;
+    --throttle: #e5654a;
+    --pending: #d9a441;
+    --series-1: #4a8fdb;
+    --series-2: #c9742a;
+    --series-3: #2ba584;
+    --series-4: #a866c8;
+    --series-other: #6f8493;
+    --focus: #e4ecf1;
+  }
+}
+
+:root[data-theme='dark'] {
+  --surface-page: #0f171e;
+  --surface-panel: #15202a;
+  --surface-inset: #1b2935;
+  --ink: #e4ecf1;
+  --ink-2: #9aaebb;
+  --ink-3: #6f8493;
+  --rule: #27384a;
+  --rule-strong: #3d5366;
+  --action: #e4ecf1;
+  --action-ink: #0f171e;
+  --throttle: #e5654a;
+  --pending: #d9a441;
+  --series-1: #4a8fdb;
+  --series-2: #c9742a;
+  --series-3: #2ba584;
+  --series-4: #a866c8;
+  --series-other: #6f8493;
+  --focus: #e4ecf1;
+}

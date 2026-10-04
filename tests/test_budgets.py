@@ -211,45 +211,28 @@ async def test_desired_endpoint_carries_resolved_limit_tpm(api_client):
 
 
 # ---------------------------------------------------------------------------
-# Legacy /control + /limits integration (replaces control/limits.py)
+# Scoped resolution through the v2 API (the legacy /control and /limits
+# routes were retired in Phase 5)
 # ---------------------------------------------------------------------------
 
-@pytest.fixture
-async def legacy_client(tmp_path):
-    store = WorkerStore(str(tmp_path / "legacy.db"))
-    await store.connect()
-    dashboard_app.app.state.worker_store = store
-    dashboard_app.app.state.supervisor = Supervisor(store)
-    dashboard_app.registered_mode_defaults.clear()
-    transport = httpx.ASGITransport(app=dashboard_app.app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as c:
-        yield c
-    await store.close()
-
-
-async def test_worker_level_override_beats_team_update(legacy_client):
-    """The bug this fixes: the old /limits/{team} bulk-wrote every worker's
-    entry, silently clobbering individual overrides. A real scoped Budget
-    means a worker-level edit now survives a later team-level edit.
+async def test_worker_level_override_survives_team_budget_update(api_client):
+    """The bug this guards: a team-wide edit must not clobber a worker that
+    has its own override. Real scoped resolution keeps the override in place.
     """
-    await legacy_client.post("/register", json={"user": "w1", "team": "team-a"})
-    await legacy_client.post("/register", json={"user": "w2", "team": "team-a"})
+    await api_client.post("/api/workers", json={"worker_id": "w1", "team": "team-a"})
+    await api_client.post("/api/workers", json={"worker_id": "w2", "team": "team-a"})
+    await api_client.put("/api/budgets/worker:w1", json={
+        "scope": "worker", "scope_ref": "w1", "tokens_per_minute": 999,
+    })
+    await api_client.patch("/api/workers/w1/desired", json={"budget_id": "worker:w1"})
+    await api_client.put("/api/budgets/team:team-a", json={
+        "scope": "team", "scope_ref": "team-a", "tokens_per_minute": 4000,
+    })
 
-    await legacy_client.post("/control/w1", json={"limit_tpm": 999})  # w1-specific override
-    await legacy_client.post("/limits/team-a", json={"limit_tpm": 4000})  # team-wide change
-
-    w1 = (await legacy_client.get("/control/w1")).json()
-    w2 = (await legacy_client.get("/control/w2")).json()
-    assert w1["limit_tpm"] == 999  # survived the team update
-    assert w2["limit_tpm"] == 4000  # picked up the team update (no override of its own)
-
-
-async def test_control_patch_limit_tpm_sets_resolved_via_worker_assignment(legacy_client):
-    await legacy_client.post("/register", json={"user": "w1", "team": "team-a"})
-    resp = await legacy_client.post("/control/w1", json={"limit_tpm": 777})
-    body = resp.json()
-    assert body["limit_tpm"] == 777
-    assert body["resolved_via"] == "worker_assignment"
+    w1 = (await api_client.get("/api/workers/w1/budget")).json()
+    w2 = (await api_client.get("/api/workers/w2/budget")).json()
+    assert w1["tokens_per_minute"] == 999 and w1["resolved_via"] == "worker_assignment"
+    assert w2["tokens_per_minute"] == 4000 and w2["resolved_via"] == "team"
 
 
 # ---------------------------------------------------------------------------

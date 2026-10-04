@@ -1,194 +1,142 @@
 # API Reference
 
-The dashboard exposes a REST API used by agents and the browser UI. All endpoints are on the same FastAPI process (`http://localhost:8000` by default).
+The dashboard serves one JSON API, one live stream, Prometheus metrics, and the built UI. Routes
+under `/api/` are the supported surface. The v1 routes (`/register`, `/control/{id}`, `/act/{n}`,
+`/reset`, `/limits/{team}`, `/events/stream`) were retired with the Phase 5 UI rebuild.
+
+All examples assume the dashboard at `http://localhost:8000`.
 
 ---
 
-## Agent endpoints
+## Live read model
 
-These are called by agent processes.
+### `GET /api/stream`
 
----
+Server-sent events, one connection for the whole UI.
 
-### `POST /register`
+| Event | Payload | When |
+|---|---|---|
+| `snapshot` | the complete read model (below) | every second |
+| `events` | an array of recent model calls | when there are new calls; its SSE `id` is the last `seq` sent |
 
-Called by an agent on startup to register itself with the dashboard. Creates a lane in the UI.
+On reconnect, the browser sends `Last-Event-ID`, and the server replays every call after that `seq`.
+Without the header, a new client receives the most recent 50 calls.
 
-**Request body:**
+`?once=1` returns one tick and closes. It exists for tests and scripts.
+
+**Snapshot shape**
 
 ```json
 {
-  "user": "agent-1",
-  "team": "Banking Ops",
-  "display_name": "Dispute Triage Bot",
-  "task_description": "Processing dispute letters",
-  "agent": "triage",
-  "mode": "paced",
-  "state": "stopped",
-  "limit_tpm": 2000
+  "revision": 412,
+  "timestamp": 1791110000.2,
+  "buckets": [1791109945, "... 12 bucket start times, 5 s apart"],
+  "workers": [{
+    "worker_id": "w1", "team": "banking-ops", "display_name": "Dispute triage",
+    "managed": false, "pid": null,
+    "desired":  {"state": "running", "agent": "triage", "mode": "paced", "budget_id": null, "generation": 3},
+    "observed": {"status": "running", "phase": "running", "applied_generation": 3,
+                 "current_node": "classify", "iteration": 812, "last_error": null,
+                 "heartbeat_at": 1791110000.1, "lease_expires_at": 1791110005.1},
+    "budget":   {"budget_id": "team:banking-ops", "scope": "team", "resolved_via": "team",
+                 "tokens_per_minute": 3000, "effective_tokens_per_minute": 2700,
+                 "enforcement": "client_bucket", "shared_by": 4, "shared_tokens_per_minute": 17783},
+    "live":     {"tokens_per_minute": 2448, "calls_per_minute": 9, "throttled_last_minute": 0,
+                 "latest_node": "classify", "latest_status": 200, "latency_ms": 1104},
+    "dropped_total": 0,
+    "series": [0, 0, 1200, "... 12 values: tokens over the 60 s ending at each bucket"],
+    "series_throttled": [0, 0, 1, "... 12 values: throttled calls per bucket"]
+  }],
+  "budgets": [],
+  "teams": ["banking-ops"],
+  "totals": {"workers": 4, "running": 4, "tokens_per_minute": 17783,
+             "throttled_last_minute": 12, "dropped_total": 0}
 }
 ```
 
-| Field | Type | Required | Description |
-|---|---|---|---|
-| `user` | string | Yes | Unique agent identifier. Used as routing key. |
-| `team` | string | Yes | Team label shown in UI. |
-| `display_name` | string | No | Human-readable name for the UI lane title. Defaults to `user`. |
-| `task_description` | string | No | One-line description shown on the agent card. |
-| `agent` | string | No | Agent type label (`triage`, `research`, `assistant`, or custom). |
-| `mode` | string | No | Initial mode (`naive`, `paced`, `runaway`). |
-| `state` | string | No | Initial state. Should always be `stopped`. |
-| `limit_tpm` | int | No | Initial TPM limit. Default: 2000. |
+`resolved_via` is one of `worker_assignment`, `team`, `global`, `default`.
+`status` is derived on the server. The UI never recomputes it.
 
-**Response:**
+### `GET /api/scenarios`
+
+Scenario files under `SCENARIOS_DIR` (default `scenarios/`), each validated.
+
 ```json
-{"status": "registered", "user": "agent-1"}
+[{"path": "scenarios/steady-vs-runaway.yaml", "file": "steady-vs-runaway.yaml",
+  "run": "steady-vs-runaway", "valid": true, "error": null,
+  "scenarios": [{"name": "runaway", "agent": "research", "mode": "runaway",
+                 "executor": "ramping_arrival_rate", "budget": "team-shared"}]}]
 ```
+
+An invalid file has `valid: false` and an `error` that says what to fix.
 
 ---
 
-### `POST /events`
+## Workers
 
-Called by an agent after every model call to deliver a telemetry event.
+Worker commands are the control plane. Changes take effect on the worker's next poll, usually
+within a second.
 
-**Request body:** A `TelemetryEvent` object:
-
-```json
-{
-  "ts": "2024-01-15T14:23:45.123456",
-  "user": "agent-1",
-  "team": "Banking Ops",
-  "agent": "triage",
-  "mode": "paced",
-  "run_id": "t-abc123",
-  "node": "classify",
-  "status": 200,
-  "prompt_tokens": 712,
-  "completion_tokens": 24,
-  "latency_ms": 1340,
-  "ratelimit_headers": {},
-  "attempt": 1
-}
-```
-
-**Response:**
-```json
-{"status": "ok"}
-```
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/api/workers` | Register a worker. Idempotent. Re-registering never resets its desired state. |
+| `GET` | `/api/workers` | List workers with their derived status. |
+| `GET` | `/api/workers/{id}/desired` | What the worker should be doing. Polled by the worker. |
+| `PATCH` | `/api/workers/{id}/desired` | Set `state`, `agent`, `mode` or `budget_id`. An empty `budget_id` clears the worker's own assignment, so it falls back to team or global. |
+| `POST` | `/api/workers/{id}/heartbeat` | Worker reports what it has applied. Also carries dropped-iteration counts. |
+| `GET` | `/api/workers/{id}/budget` | The budget that applies to this worker, and why. |
+| `POST` | `/api/workers/{id}/interrupt` | Cut short the call in progress. The worker keeps running. |
+| `POST` | `/api/workers/{id}/spawn` | Start a managed worker process. |
+| `POST` | `/api/workers/{id}/kill` | Stop a managed worker process. Returns 409 for externally started workers. |
+| `DELETE` | `/api/workers/{id}` | Forget a stopped or lost worker. Returns 409 otherwise. |
 
 ---
 
-### `GET /control/{user_id}`
+## Budgets
 
-Called by an agent every second to get its desired state from the dashboard.
+| Method | Path | Purpose |
+|---|---|---|
+| `GET` | `/api/budgets` | All budgets, with effective rates. |
+| `GET` | `/api/budgets/{id}` | One budget. |
+| `PUT` | `/api/budgets/{id}` | Create or replace a budget. Full replace. |
+| `DELETE` | `/api/budgets/{id}` | Delete a budget. Returns 409 while any worker is assigned to it. |
 
-**Response:**
+Body for `PUT`:
+
 ```json
-{
-  "user": "agent-1",
-  "team": "Banking Ops",
-  "state": "running",
-  "agent": "triage",
-  "mode": "paced",
-  "limit_tpm": 2000
-}
+{"scope": "team", "scope_ref": "banking-ops", "tokens_per_minute": 3000,
+ "headroom": 0.9, "enforcement": "client_bucket"}
 ```
 
-If the `user_id` has not been registered, returns a default running state with `team-alpha` defaults.
+`scope` is `global`, `team` or `worker`. `enforcement` is `off`, `client_bucket` or `shadow`.
 
 ---
 
-## UI / control endpoints
+## Scenario runs
 
-These are called by the browser dashboard when you interact with the controls.
+### `POST /api/runs`
+
+Starts one managed worker process per scenario in a file.
+
+```json
+{"scenario_path": "scenarios/steady-vs-runaway.yaml", "scenario_names": ["runaway"]}
+```
+
+`scenario_names` is optional and defaults to every scenario in the file. Returns the worker ids
+started. A file that does not validate returns 400 with the reason.
 
 ---
 
-### `POST /control/{user_id}`
+## Telemetry and metrics
 
-Updates an agent's control state. The agent picks up the change on its next poll (within ~1 second).
-
-**Request body** (partial update — any fields you want to change):
-
-```json
-{"state": "stopped"}
-```
-
-```json
-{"mode": "runaway"}
-```
-
-```json
-{"limit_tpm": 3000}
-```
-
-**Response:** The full updated control state for that agent.
+| Method | Path | Purpose |
+|---|---|---|
+| `POST` | `/events` | Agents post one event per model call. The server stamps arrival time. |
+| `GET` | `/metrics` | Prometheus text format: request counts, token totals, latency and TTFT summaries, dropped iterations, clock skew. |
 
 ---
 
-### `POST /limits/{team_id}`
+## UI
 
-Updates the TPM limit for all agents on a team simultaneously.
-
-**Request body:**
-```json
-{"limit_tpm": 4000}
-```
-
-**Response:**
-```json
-{"team": "team-alpha", "limit_tpm": 4000}
-```
-
----
-
-### `POST /act/{act_num}`
-
-Sets up a predefined scenario across all connected agents.
-
-| `act_num` | Effect |
-|---|---|
-| `1` | Normal Operations: first registered agent → stopped; all others → `paced` + `running` |
-| `2` | Runaway Agent: first registered agent → `runaway` + `running`; all others → `paced` + `running` |
-
-**Response:** Current control and limits state for all agents.
-
----
-
-### `POST /reset`
-
-Stops all agents, clears the event buffer, and restores each agent's mode to its registered default.
-
-**Response:**
-```json
-{"status": "reset", "control": {...}, "limits": {...}}
-```
-
----
-
-## Streaming endpoint
-
-### `GET /events/stream`
-
-Server-sent events (SSE) stream consumed by the browser. Emits one JSON payload per second.
-
-**Content-Type:** `text/event-stream`
-
-**Event format:**
-```
-data: {"timestamp": 1705320000.0, "control": {...}, "limits": {...}, "agent_registry": {...}, "user_metrics": {...}, "chart_series": [...], "recent_events": [...]}
-```
-
-**Payload fields:**
-
-| Field | Description |
-|---|---|
-| `timestamp` | Unix timestamp of this snapshot |
-| `control` | Map of `user_id` → control state for all registered agents |
-| `limits` | Map of `team_id` → current TPM limit |
-| `agent_registry` | Map of `user_id` → identity metadata (display_name, team, task_description, etc.) |
-| `user_metrics` | Map of `user_id` → rolling 1-minute metrics (tpm, status_429_count, total_calls, latest_status, latest_node, latency_ms) |
-| `chart_series` | Array of 12 objects (5-second buckets, last 60 seconds), each with `time` and `{user_id}_tokens` fields |
-| `recent_events` | Last 30 telemetry events as received, oldest first |
-
-The stream runs indefinitely. The browser reconnects automatically if the connection drops. On server shutdown, the stream exits cleanly within 1 second.
+Anything else is served from the built UI (`dashboard/frontend/dist/`). If the UI has not been built,
+the root path returns a page that says how to build it.

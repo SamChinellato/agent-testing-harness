@@ -87,7 +87,7 @@ For full setup details, see [**Getting Started**](docs/getting-started.md).
 │  └──────┬───────┘  └──────┬───────┘  └──────┬───────┘       │
 │         │                 │                  │               │
 │         └─────────────────┼──────────────────┘               │
-│              POST /events   GET /control/{id}                │
+│              POST /events   GET /api/workers/{id}/desired    │
 │                            ▼                                 │
 │                 ┌─────────────────────┐                      │
 │                 │  FastAPI Dashboard  │  :8000               │
@@ -102,7 +102,7 @@ For full setup details, see [**Getting Started**](docs/getting-started.md).
 └─────────────────────────────────────────────────────────────┘
 ```
 
-Each agent polls `GET /control/{user_id}` every second for start/stop/mode commands. Every model call emits a telemetry event to `POST /events`. The dashboard streams a live SSE update to the browser every second.
+Each agent polls `GET /api/workers/{id}/desired` every second for start/stop/mode/budget commands, and heartbeats its state back. Every model call emits a telemetry event to `POST /events`. The dashboard streams a full snapshot to the browser every second over one SSE connection (`/api/stream`).
 
 ---
 
@@ -127,13 +127,13 @@ maas-agent-demo/
 │   │   └── assistant.py          # Multi-turn chat: streaming with history
 │   │
 │   ├── dashboard/
-│   │   └── app.py                # FastAPI: /events, /control, /act, /reset, SSE, static files
+│   │   └── app.py                # FastAPI: /events, /metrics, /api/stream, /api/scenarios, static files
 │   │
 │   └── data/
 │       ├── letters/              # Synthetic dispute letters (triage corpus)
 │       └── policies/             # Banking policy documents (research/assistant corpus)
 │
-├── dashboard/frontend/           # React + PatternFly v6 dashboard UI
+├── dashboard/frontend/           # React + TypeScript dashboard UI (Vite, Zustand, Playwright tests)
 │   ├── src/App.tsx               # Main dashboard component
 │   └── dist/                     # Built output served by FastAPI
 │

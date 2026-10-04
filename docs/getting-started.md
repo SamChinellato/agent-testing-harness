@@ -176,7 +176,7 @@ Terminal 1              Terminal 2, 3, ...          Browser
 uv run dashboard        uv run agent                localhost:8000
 │                       │
 │ serves React UI       │ registers on startup
-│ :8000                 │ polls /control/{id}
+│ :8000                 │ polls /api/workers/{id}/desired
 │                       │ posts /events
 │                       │
 └───────────────────────┴──> same FastAPI process

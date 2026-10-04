@@ -1,7 +1,7 @@
 # Phase 1–5 — Implementation Plan
 
-**Status:** Phases 1–4 ✅ **implemented** — see each phase's "Implementation notes" subsection for
-what shipped and where it deviated from this plan. Phase 5 still draft.
+**Status:** Phases 1–5 ✅ **implemented** — see each phase's "Implementation notes" subsection for
+what shipped and where it deviated from this plan.
 **Parent:** [redesign-spec.md](redesign-spec.md) §4, §6
 **Purpose:** this is the actionable, file-by-file companion to the architecture in
 `redesign-spec.md` §4. That document explains *why*; this one specifies *what to build*: concrete
@@ -754,6 +754,75 @@ one prefix (closing the other half of redesign-spec.md finding #19).
 6. Tests: a Playwright (or equivalent) smoke test driving Start → see status flip to `running` →
    Stop → see `draining` then `stopped`, against a real (not mocked) backend — this is the
    regression test for "state issues... struggling to stop them" specifically.
+
+---
+
+### 5.7 Implementation notes (what actually shipped, and where it deviated)
+
+**Files added (backend):** `dashboard/snapshot.py` (the read model), `scenarios/steady-vs-runaway.yaml`
+(an example run), `scripts/demo_fleet.py` (a believable fleet with live traffic, for looking at the UI
+without a model endpoint). **Files replaced:** `dashboard/app.py` (legacy routes removed),
+`tests/test_dashboard.py` (rewritten for the new surface). **Files added (frontend):** the whole
+`src/` tree is new — `api/`, `state/`, `components/`, `styles/`, `format.ts`, and `e2e/` plus
+`playwright.config.ts`. **Verified:** 116 backend tests, 15 frontend unit tests, 6 Playwright end-to-end
+tests against a real backend. Screenshots were reviewed in light and dark at desktop width and at phone
+width, and the findings from that review were fixed (see below).
+
+**Design.** The brief is an instrument panel for load tests, not a dashboard of cards. The one memorable
+element is the throughput trace: every worker against its own limit, with the team's limit drawn once.
+Typography is two families with separate jobs: Instrument Serif for the wordmark and the large
+readouts, IBM Plex Sans for everything else with tabular figures. Structure comes from hairline rules
+and rows, not cards. Palette: a cool slate surface and four series colours from the dataviz validator,
+with separate light and dark sets. The vermilion is reserved for throttling and over-budget states, and
+status is never shown by colour alone.
+
+**Deviation 1 — the stack changed.** PatternFly, Recharts and Lucide were removed. PatternFly gives a
+recognisable enterprise look, which works against a redesign. The trace and sparklines are hand-written
+SVG, because they need direct labels, throttle ticks and a crosshair, and the charting library's
+defaults fought each of those. Zustand is kept for the store, and fonts are self-hosted through
+`@fontsource`, so the page works offline.
+
+**Deviation 2 — live transport is SSE, and fleet state is a full snapshot.** Kept from the decision in
+the previous turn. The snapshot is small, so it is replaced whole each second with a revision number.
+Only the event log is incremental, resumed from `Last-Event-ID`.
+
+**Deviation 3 — the trailing-minute rate.** Phase 0's chart summed tokens per 5-second bucket and scaled
+them, so a sparkline peaked at several times the value the gauge showed. Each point is now the tokens in
+the 60 seconds ending at that bucket. The last point equals the live rate, and a test pins that.
+
+**Deviation 4 — shared limits are measured as a group.** A team or global budget is one limit for every
+worker that resolves to it, so the snapshot now carries the shared total. The gauge is shown once, above
+the rows, and each row shows its own share. Before this, every row repeated the group figure, and every
+row read as over the limit.
+
+**Deviation 5 — clearing an assignment.** The editor returns a worker to team or global budgets by sending
+`budget_id: ""`. `DesiredPatch` already accepted it, and the store already treats an empty id as no
+assignment. `null` cannot be used, because the patch drops null fields.
+
+**Deviation 6 — retirement.** `/register`, `/control/{id}`, `/limits/{team}`, `/act/{n}`, `/reset` and
+`/events/stream` are gone. Each is covered by a test asserting it no longer answers. "Stop all" sends one
+PATCH per running worker and reports any failures, so it is not atomic.
+
+**Deviation 7 — the scenario launcher lists and launches, but has no separate dry-run view.** The
+listing shows each scenario's agent, mode and executor, and invalid files show why. A dry-run endpoint
+was not built.
+
+**Deviation 8 — the event log renders at most 200 rows, without virtualisation.** Enough for this use;
+virtualisation is an easy later addition if logs grow.
+
+**Deviation 9 — the theme follows the system setting.** There is no manual toggle yet.
+
+**Problems the screenshots caught, and what changed.** Each worker showed as Lost, because the demo
+registered workers without heartbeats; the demo now heartbeats like real workers. The chart's end labels
+overlapped; labels are now spread apart. The event log wrapped its columns; it now uses no-wrap cells and
+a wider side column. On a phone, the chart's label gutter left the plot about 130px wide; the gutter now
+scales with the width, and the header stacks.
+
+**Tests that now guard the behaviour:** the store ignores older revisions and never repaints a surviving
+worker's colour; over-four workers fold into a neutral "Other" rather than inventing a colour; the budget
+editor's draft survives live updates and shows the server's refusal; a refused budget keeps the draft;
+the trace's last point matches the live rate; and the browser tests cover Start/Stop reaching the
+worker, the budget flow end to end, keyboard focus, and the launcher.
 
 ---
 

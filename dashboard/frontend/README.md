@@ -1,32 +1,27 @@
-# React + TypeScript + Vite
+# Dashboard UI
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React and TypeScript, built with Vite. The UI is served by the dashboard API from `dist/`.
 
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
+npm run dev          # hot reload; proxies /api and /metrics to the dashboard on :8000
+npm run build        # type-check, then build to dist/
+npm test             # unit tests (Vitest)
+npm run test:e2e     # end-to-end (Playwright) against a real backend
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Set `HARNESS_BACKEND=http://host:port` to point the dev server at another dashboard.
+
+## Structure
+
+- `src/api/` — the snapshot types and REST commands. Types mirror `maasagentharness/dashboard/snapshot.py`.
+- `src/state/` — the live store (revision-guarded snapshots, de-duplicated log events) and the stream hook.
+- `src/components/` — the bench: readouts, the trace, worker rows, the budget editor, the scenario launcher, the log.
+- `src/styles/` — design tokens (light and dark) and the stylesheet.
+- `e2e/` — Playwright tests. They start the backend on a throwaway database.
+
+## Design notes
+
+The palette is validated with the dataviz skill's `validate_palette.js`. Each theme's series colours
+pass lightness, chroma, colour-vision and contrast checks against that theme's background. Status is
+never shown by colour alone.

@@ -10,7 +10,7 @@ This document covers the internal components of the harness: `ModelHarness`, `To
 ┌─────────────────────────────────────────────────────────────┐
 │  AgentWorker (runner.py)                                     │
 │                                                              │
-│  • Polls /control/{user_id} every second                    │
+│  • Polls /api/workers/{id}/desired every second             │
 │  • Holds a persistent ModelHarness (survives cycle restarts) │
 │  • Calls agent.run() each cycle                             │
 │  • Respects start/stop from dashboard                       │
@@ -210,8 +210,8 @@ The harness (and its token bucket) is created once and reused across cycles. Thi
 Dashboard (FastAPI)          Agent (AgentWorker)
 ─────────────────────        ──────────────────────────────
 POST /register          ←    on startup
-GET  /control/{id}      ←    every ~1 second
-POST /control/{id}      →    when user clicks Start/Stop/mode/limit
+GET  /api/workers/{id}/desired   ←  every ~1 second
+PATCH /api/workers/{id}/desired  →  when user clicks Start/Stop/mode/budget
 POST /events            ←    after every model call
 GET  /events/stream     →    browser SSE subscription (not agent)
 ```

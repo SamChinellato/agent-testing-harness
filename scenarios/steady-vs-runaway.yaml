@@ -1,0 +1,36 @@
+# Two agents sharing one team budget. One behaves well (paced), one ignores
+# the limit (runaway). Watch the runaway agent blow through the budget while
+# the paced agent keeps its place.
+run: steady-vs-runaway
+# Endpoint and model come from the worker's environment (.env), so this file
+# runs unchanged against whichever gateway you point at.
+budgets:
+  - budget_id: team-shared
+    scope: team
+    scope_ref: banking-ops
+    tokens_per_minute: 3000
+    enforcement: client_bucket
+scenarios:
+  well-behaved:
+    agent: triage
+    mode: paced
+    executor:
+      kind: constant_arrival_rate
+      rate: 30
+      duration: 5m
+      max_vus: 5
+    budget: team-shared
+  runaway:
+    agent: research
+    mode: runaway
+    executor:
+      kind: ramping_arrival_rate
+      stages:
+        - target: 10
+          duration: 1m
+        - target: 60
+          duration: 4m
+      max_vus: 20
+    budget: team-shared
+thresholds:
+  - "rate(status_429) < 0.05"

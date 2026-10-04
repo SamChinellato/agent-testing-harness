@@ -218,12 +218,6 @@ async def test_metrics_route_serves_prometheus_text(dash_client):
     assert 'agent_harness_tokens_total{worker="metrics-w1",direction="in"} 100' in resp.text
 
 
-async def test_metrics_survive_reset(dash_client):
-    await dash_client.post("/events", json=_event_payload())
-    await dash_client.post("/reset")
-    assert default_store.by_worker["metrics-w1"].requests == 1
-
-
 @pytest.fixture
 async def worker_store(tmp_path):
     s = WorkerStore(str(tmp_path / "hb.db"))
