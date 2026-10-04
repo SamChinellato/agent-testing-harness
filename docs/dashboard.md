@@ -19,14 +19,15 @@ Run it with `uv run dashboard`, then open http://localhost:8000.
 
 ## Worker rows
 
-The menu (⋮) holds the rest: **Limit**, the three modes, **Interrupt**, **Kill process** (only for
-processes the dashboard started) and **Forget** (only for stopped or lost workers).
+The menu (⋮) holds the rest: **Limit**, the two behaviours (**Obeys limit** or **Ignores limit**),
+**Interrupt**, **Kill process** (only for processes the dashboard started) and **Forget** (only for
+stopped or lost workers).
 
 **Limit** opens a small form:
 
 - **Tokens per minute.**
 - **Applies to.** This worker, the worker's team, or everyone.
-- **When reached.** *Enforce*, *Measure only*, or *Off*.
+- **Measure only.** Records the overage without slowing agents down. Off means the limit is enforced.
 
 **Save** applies the change. **Revert** puts back the saved values. If the server refuses, the reason
 appears under the row and your values stay in the form.

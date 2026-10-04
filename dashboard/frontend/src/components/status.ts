@@ -23,14 +23,12 @@ export const STATUS_COLOUR: Record<WorkerStatus, 'green' | 'grey' | 'blue' | 'or
   errored: 'red',
 };
 
+/** The two behaviours the dashboard offers. A worker started with the older
+ *  'naive' mode still shows, under its own name, until it is switched. */
 export const MODE_TEXT: Record<string, string> = {
+  paced: 'Obeys limit',
+  runaway: 'Ignores limit',
   naive: 'Naive retry',
-  paced: 'Paced',
-  runaway: 'Ignores limits',
 };
 
-export const ENFORCEMENT_TEXT: Record<string, string> = {
-  client_bucket: 'Enforce',
-  shadow: 'Measure only',
-  off: 'Off',
-};
+export const SELECTABLE_MODES = ['paced', 'runaway'] as const;

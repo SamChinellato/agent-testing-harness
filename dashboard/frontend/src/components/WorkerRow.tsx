@@ -7,7 +7,7 @@ import { count } from '../format';
 import { BudgetEditor } from './BudgetEditor';
 import { Sparkline } from './Sparkline';
 import { colourFor } from './Trace';
-import { MODE_TEXT, STATUS_COLOUR, STATUS_TEXT } from './status';
+import { MODE_TEXT, SELECTABLE_MODES, STATUS_COLOUR, STATUS_TEXT } from './status';
 
 type Message = { tone: 'danger' | 'success'; text: string } | null;
 
@@ -101,7 +101,7 @@ export function WorkerRow({ worker, snapshot, slot }: { worker: WorkerSnapshot; 
               <DropdownItem onClick={() => { setPanelOpen(!panelOpen); setMenuOpen(false); }}>
                 {panelOpen ? 'Hide limit' : 'Limit'}
               </DropdownItem>
-              {(Object.keys(MODE_TEXT) as (keyof typeof MODE_TEXT)[]).map((mode) => (
+              {SELECTABLE_MODES.map((mode) => (
                 <DropdownItem
                   key={mode}
                   isDisabled={busy || worker.desired.mode === mode}

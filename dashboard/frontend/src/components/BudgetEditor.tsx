@@ -1,15 +1,16 @@
 import { useEffect, useState } from 'react';
-import { Button, Form, FormGroup, FormSelect, FormSelectOption, Radio, TextInput } from '@patternfly/react-core';
+import { Button, Checkbox, Form, FormGroup, Radio, TextInput } from '@patternfly/react-core';
 import { api, ApiError } from '../api/client';
-import type { Enforcement, Snapshot, WorkerSnapshot } from '../api/types';
-import { ENFORCEMENT_TEXT } from './status';
+import type { Snapshot, WorkerSnapshot } from '../api/types';
 
 type ScopeChoice = 'worker' | 'team' | 'global';
 
 interface Draft {
   scope: ScopeChoice;
   tokens: string;
-  enforcement: Enforcement;
+  /** Only two values are offered: enforce (client_bucket) or measure only (shadow).
+   *  A budget saved as 'off' by an older version is shown as enforced. */
+  enforcement: 'client_bucket' | 'shadow';
 }
 
 function fromWorker(w: WorkerSnapshot): Draft {
@@ -18,7 +19,7 @@ function fromWorker(w: WorkerSnapshot): Draft {
   return {
     scope,
     tokens: w.budget.tokens_per_minute === null ? '' : String(w.budget.tokens_per_minute),
-    enforcement: w.budget.enforcement,
+    enforcement: w.budget.enforcement === 'shadow' ? 'shadow' : 'client_bucket',
   };
 }
 
@@ -132,16 +133,13 @@ export function BudgetEditor({ worker, snapshot }: { worker: WorkerSnapshot; sna
         </div>
       </FormGroup>
 
-      <FormGroup label="When reached" fieldId={`enf-${worker.worker_id}`}>
-        <FormSelect
-          id={`enf-${worker.worker_id}`}
-          value={draft.enforcement}
-          onChange={(_e, value) => setDraft({ ...draft, enforcement: value as Enforcement })}
-        >
-          {(Object.keys(ENFORCEMENT_TEXT) as Enforcement[]).map((k) => (
-            <FormSelectOption key={k} value={k} label={ENFORCEMENT_TEXT[k]} />
-          ))}
-        </FormSelect>
+      <FormGroup label="Measure only" fieldId={`measure-${worker.worker_id}`}>
+        <Checkbox
+          id={`measure-${worker.worker_id}`}
+          label="Record the overage without slowing agents down"
+          isChecked={draft.enforcement === 'shadow'}
+          onChange={(_e, checked) => setDraft({ ...draft, enforcement: checked ? 'shadow' : 'client_bucket' })}
+        />
       </FormGroup>
 
       <div className="budget-form__actions">
